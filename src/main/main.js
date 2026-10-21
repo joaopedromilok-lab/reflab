@@ -20,6 +20,15 @@ function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
 
+function titleBarOverlay(theme = 'dark') {
+  const light = theme === 'light';
+  return {
+    color: light ? 'rgba(247, 248, 250, 0.88)' : 'rgba(20, 21, 24, 0.82)',
+    symbolColor: light ? '#34363b' : '#e8e8eb',
+    height: 36,
+  };
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
@@ -28,7 +37,8 @@ function createWindow() {
     minHeight: 640,
     backgroundColor: '#0f0f10',
     title: 'RefLab',
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : process.platform === 'win32' ? 'hidden' : 'default',
+    ...(process.platform === 'win32' ? { titleBarOverlay: titleBarOverlay(settings.get().theme) } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -90,6 +100,9 @@ function registerIpc() {
   ipcMain.handle('settings:set', (_e, partial) => {
     const s = settings.set(partial);
     jobs.setConcurrency(s.concurrency);
+    if (process.platform === 'win32' && partial && Object.hasOwn(partial, 'theme') && win && !win.isDestroyed()) {
+      win.setTitleBarOverlay(titleBarOverlay(s.theme));
+    }
     return s;
   });
 
