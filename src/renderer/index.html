@@ -7,6 +7,10 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <header class="window-titlebar" aria-label="Barra do RefLab">
+    <div class="window-titlebar-brand"><span class="logo" aria-hidden="true">R</span><span>RefLab</span></div>
+    <span class="window-titlebar-caption">Seu espaço de referências</span>
+  </header>
   <div class="app">
     <aside class="sidebar">
       <div class="brand"><span class="logo" aria-hidden="true">R</span><span>RefLab</span></div>
@@ -425,6 +429,17 @@
       <!-- AJUSTES -->
       <section class="view" id="view-settings">
         <header class="view-head"><h1>Ajustes</h1></header>
+        <h3 class="label">Aparência</h3>
+        <div class="card appearance-card">
+          <div>
+            <b>Esquema de cores</b>
+            <p class="hint">Escolha como o RefLab aparece neste computador.</p>
+          </div>
+          <select id="theme" aria-label="Esquema de cores">
+            <option value="dark">Escuro</option>
+            <option value="light">Claro</option>
+          </select>
+        </div>
         <div class="grid2">
           <div class="field">
             <label>Tarefas ao mesmo tempo</label>

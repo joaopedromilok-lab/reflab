@@ -1,7 +1,7 @@
 {
   "name": "reflab",
   "productName": "RefLab",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Baixador e laboratório de referências para editores de vídeo",
   "main": "src/main/main.js",
   "author": "RefLab",

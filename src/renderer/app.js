@@ -31,6 +31,11 @@ function basename(p) {
   return String(p || '').split(/[\\/]/).pop();
 }
 
+function applyTheme(theme) {
+  const normalized = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = normalized;
+}
+
 function fmtSecs(s) {
   if (s === null || s === undefined || !Number.isFinite(s)) return '';
   s = Math.round(s);
@@ -192,6 +197,12 @@ function updateActivitySummary() {
 
 async function initSettings() {
   state.settings = await api.settings.get();
+  applyTheme(state.settings.theme);
+  $('#theme').value = state.settings.theme === 'light' ? 'light' : 'dark';
+  $('#theme').addEventListener('change', async () => {
+    await saveSetting({ theme: $('#theme').value });
+    applyTheme(state.settings.theme);
+  });
   renderPresets();
   bindField('maxHeight', 'maxHeight', { transform: Number });
   bindField('organize', 'organize');
@@ -1759,6 +1770,9 @@ $('#updateBoxBtn').addEventListener('click', installUpdate);
 // ---------- início ----------
 
 (async function init() {
+  const appInfo = await api.appInfo();
+  document.body.classList.toggle('platform-mac', appInfo.platform === 'darwin');
+  document.body.classList.toggle('platform-linux', appInfo.platform === 'linux');
   await initSettings();
   for (const job of await api.jobs.list()) {
     state.jobs.set(job.id, job);

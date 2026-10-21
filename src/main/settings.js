@@ -7,6 +7,7 @@ let defaults = {};
 
 function init(dir, downloadsDir) {
   defaults = {
+    theme: 'dark',
     outputDir: path.join(downloadsDir, 'RefLab'),
     preset: 'h264',
     maxHeight: 1080,
