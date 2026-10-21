@@ -575,7 +575,8 @@ const HANDLERS = {
     }
     patch(job, { phase: o.withCaptions ? 'Montando o vídeo com legenda...' : 'Montando o vídeo...' });
     const r = await montage.render(o.file, o.ranges, {
-      vertical: o.vertical, withCaptions: o.withCaptions, words, title: o.outputTitle, outDir: o.outDir, ...ctx,
+      format: o.format || o.vertical, withCaptions: o.withCaptions, words, style: o.style, logo: o.logo,
+      title: o.outputTitle, outDir: o.outDir, ...ctx,
     });
     job.files.push(r.output);
     return r;

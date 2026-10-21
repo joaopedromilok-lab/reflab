@@ -128,6 +128,22 @@ function registerIpc() {
     return montage.exportXml(file, ranges, { title, outDir: t ? t.outDir : undefined });
   });
   ipcMain.handle('compare:load', (_e, files) => decupagem.compare(files));
+  ipcMain.handle('captions:presets', () => ({ presets: require('./captions').PRESETS, formats: montage.FORMATS }));
+  ipcMain.handle('montage:preview', async (_e, file, range, opts) => {
+    let words = [];
+    if (opts.withCaptions) {
+      const t = await transcribe.load(file);
+      if (t) words = require('./captions').allWords(t.segments);
+    }
+    return montage.preview(file, range, { ...opts, words });
+  });
+  ipcMain.handle('dialog:image', async () => {
+    const r = await dialog.showOpenDialog(win, {
+      properties: ['openFile'],
+      filters: [{ name: 'Imagens', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    });
+    return r.canceled ? null : r.filePaths[0];
+  });
   ipcMain.handle('clipboard:write', (_e, text) => clipboard.writeText(String(text || '')));
   ipcMain.handle('dialog:folderOnly', async () => {
     const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });

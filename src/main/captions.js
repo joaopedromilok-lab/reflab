@@ -33,7 +33,7 @@ function allWords(segments) {
 }
 
 // Agrupa palavras em legendas: cada uma com até maxChars por linha e maxLines linhas.
-function groupWords(words, { maxChars = 42, maxLines = 2, maxDur = 6, minGap = 0.8 } = {}) {
+function groupWords(words, { maxChars = 42, maxLines = 2, maxDur = 6, minGap = 0.8, maxWords = 0 } = {}) {
   const cues = [];
   let cur = null;
   const flush = () => {
@@ -47,7 +47,8 @@ function groupWords(words, { maxChars = 42, maxLines = 2, maxDur = 6, minGap = 0
     if (cur) {
       const lines = wrap(`${cur.raw} ${word}`, maxChars);
       const gap = w.start - cur.end;
-      const tooLong = lines.length > maxLines || w.end - cur.start > maxDur || gap > minGap;
+      const tooLong = lines.length > maxLines || w.end - cur.start > maxDur || gap > minGap
+        || (maxWords && cur.words.length >= maxWords);
       const sentenceEnd = /[.!?…]$/.test(cur.raw) && cur.raw.length > maxChars * 0.5;
       if (tooLong || sentenceEnd) flush();
     }
@@ -110,9 +111,35 @@ function reelsSrt(segments) {
 
 // ---------- ASS (legenda gravada no vídeo) ----------
 
+// Estilos prontos. Cada um pode ser ajustado na tela.
+const PRESETS = {
+  amarelo: { font: 'Anton', textColor: '#FFFFFF', highlight: '#FFD23F', uppercase: true, size: 'm', position: 'low', maxWords: 3, box: false },
+  verde: { font: 'Anton', textColor: '#FFFFFF', highlight: '#3CFF6B', uppercase: true, size: 'l', position: 'low', maxWords: 2, box: false },
+  caixa: { font: 'Poppins ExtraBold', textColor: '#FFFFFF', highlight: '#FFD23F', uppercase: false, size: 'm', position: 'low', maxWords: 3, box: true, boxColor: '#111111' },
+  minimalista: { font: 'DM Serif Display', textColor: '#FFFFFF', highlight: '#FFFFFF', uppercase: false, size: 's', position: 'low', maxWords: 5, box: false },
+  classico: { font: 'Poppins ExtraBold', textColor: '#FFFFFF', highlight: '#FFD23F', uppercase: false, size: 'm', position: 'low', maxWords: 3, box: false },
+};
+
+const FONT_FILES = {
+  Anton: 'Anton-Regular.ttf',
+  'Poppins ExtraBold': 'Poppins-ExtraBold.ttf',
+  'DM Serif Display': 'DMSerifDisplay-Regular.ttf',
+};
+
+function normalizeStyle(style = {}) {
+  const base = PRESETS[style.preset] || PRESETS.amarelo;
+  return {
+    keywordColor: '#FF5A4E',
+    keywords: '',
+    boxColor: '#000000',
+    ...base,
+    ...Object.fromEntries(Object.entries(style).filter(([, v]) => v !== undefined && v !== null && v !== '')),
+  };
+}
+
 function assColor(hex) {
-  const h = hex.replace('#', '');
-  return `&H00${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}&`.toUpperCase();
+  const h = String(hex || '#FFFFFF').replace('#', '').padEnd(6, 'F');
+  return `&H00${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`.toUpperCase();
 }
 
 function assTime(t) {
@@ -127,14 +154,31 @@ function assEscape(t) {
   return t.replace(/\\/g, '').replace(/[{}]/g, '');
 }
 
+function plain(t) {
+  return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
 // words: [{w, start, end}] já no tempo do vídeo final.
-function buildAss(words, { width, height, highlight = '#FFD23F', uppercase = true, position = 'low' } = {}) {
+function buildAss(words, { width, height, style: rawStyle } = {}) {
+  const st = normalizeStyle(rawStyle);
   const vertical = height > width;
-  const fontSize = Math.round((vertical ? 0.06 : 0.075) * height);
-  const marginV = Math.round(position === 'center' ? height * 0.42 : height * (vertical ? 0.22 : 0.08));
-  const cues = groupWords(words, { maxChars: vertical ? 14 : 24, maxLines: 1, maxDur: 2.2, minGap: 0.4 });
+  const shortSide = Math.min(width, height);
+  const sizeFactor = { s: 0.062, m: 0.08, l: 0.1 }[st.size] || 0.08;
+  const fontSize = Math.round(sizeFactor * shortSide * (st.font === 'Anton' ? 1.05 : 0.9));
+  const marginV = Math.round({
+    low: height * (vertical ? 0.2 : 0.08),
+    middle: height * 0.45,
+    high: height * (vertical ? 0.72 : 0.8),
+  }[st.position] || height * 0.2);
+  const keywords = new Set(String(st.keywords || '').split(',').map((k) => plain(k)).filter(Boolean));
+  const maxWords = Math.max(1, Math.min(6, Number(st.maxWords) || 3));
+  const charsPerLine = Math.max(8, Math.round((width * 0.85) / (fontSize * 0.55)));
+  const cues = groupWords(words, {
+    maxChars: charsPerLine, maxLines: maxWords > 3 ? 2 : 1, maxDur: maxWords > 3 ? 3.5 : 2.2, minGap: 0.4, maxWords,
+  });
+  const fmt = (t) => (st.uppercase ? t.toUpperCase() : t);
+  const textColor = assColor(st.textColor);
   const lines = [];
-  const fmt = (t) => (uppercase ? t.toUpperCase() : t);
   for (const cue of cues) {
     cue.words.forEach((w, i) => {
       const start = i === 0 ? cue.start : w.start;
@@ -142,21 +186,30 @@ function buildAss(words, { width, height, highlight = '#FFD23F', uppercase = tru
       if (end <= start) return;
       const text = cue.words.map((x, j) => {
         const t = assEscape(fmt(x.w.trim()));
-        return j === i ? `{\\c${assColor(highlight)}}${t}{\\c&H00FFFFFF&}` : t;
+        if (keywords.has(plain(x.w))) return `{\\c${assColor(st.keywordColor)}\\fscx118\\fscy118}${t}{\\c${textColor}\\fscx100\\fscy100}`;
+        if (j === i && st.highlight && st.highlight.toUpperCase() !== String(st.textColor).toUpperCase()) {
+          return `{\\c${assColor(st.highlight)}}${t}{\\c${textColor}}`;
+        }
+        return t;
       }).join(' ');
       lines.push(`Dialogue: 0,${assTime(start)},${assTime(end)},Reels,,0,0,0,,${text}`);
     });
   }
+  // Caixa: BorderStyle 3 desenha um retângulo com a cor do contorno.
+  const borderStyle = st.box ? 3 : 1;
+  const outlineColor = st.box ? assColor(st.boxColor) : '&H00000000';
+  const outline = st.box ? Math.round(fontSize * 0.22) : Math.round(fontSize * (st.font === 'DM Serif Display' ? 0.04 : 0.08));
+  const shadow = st.box ? 0 : Math.round(fontSize * 0.04);
   return `[Script Info]
 ScriptType: v4.00+
 PlayResX: ${width}
 PlayResY: ${height}
-WrapStyle: 2
+WrapStyle: 0
 ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Reels,Anton,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,1,0,1,${Math.round(fontSize * 0.08)},${Math.round(fontSize * 0.04)},2,60,60,${marginV},1
+Style: Reels,${st.font},${fontSize},${textColor},${textColor},${outlineColor},&H80000000,0,0,0,0,100,100,1,0,${borderStyle},${outline},${shadow},2,${Math.round(width * 0.06)},${Math.round(width * 0.06)},${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -164,4 +217,6 @@ ${lines.join('\n')}
 `;
 }
 
-module.exports = { toSrt, segmentsSrt, youtubeSrt, reelsSrt, buildAss, spreadWords, allWords, srtTime };
+module.exports = {
+  toSrt, segmentsSrt, youtubeSrt, reelsSrt, buildAss, spreadWords, allWords, srtTime, PRESETS, FONT_FILES, normalizeStyle,
+};

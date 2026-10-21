@@ -1141,6 +1141,167 @@ function scriptStats(m) {
     m.longestSentence ? el('p', { class: 'hint' }, el('b', {}, 'Frase mais longa: '), m.longestSentence) : null);
 }
 
+// ---------- legenda e Reels (estilo, formato, logo, prévia) ----------
+
+const reelsMeta = { presets: null, formats: null };
+async function loadReelsMeta() {
+  if (!reelsMeta.presets) Object.assign(reelsMeta, await api.captions.presets());
+  return reelsMeta;
+}
+
+const PRESET_LABELS = {
+  amarelo: 'Destaque amarelo (forte, maiúsculas)',
+  verde: 'Verde futebol (grande, 2 palavras)',
+  caixa: 'Caixa escura atrás do texto',
+  minimalista: 'Minimalista elegante (casamento)',
+  classico: 'Clássico (moderno, minúsculas)',
+};
+const FONT_LABELS = { Anton: 'Anton (forte)', 'Poppins ExtraBold': 'Poppins (moderna)', 'DM Serif Display': 'DM Serif (elegante)' };
+
+function reelsOptions() {
+  const s = state.settings;
+  return { format: s.reelsFormat, style: s.captionStyle, logo: s.logo && s.logo.path ? s.logo : null };
+}
+
+async function generateVideo(r, ranges, { title, outputTitle, withCaptions = true } = {}) {
+  const o = reelsOptions();
+  await api.jobs.add('montage', {
+    file: r.file, title, ranges, outDir: r.outDir, outputTitle,
+    format: o.format, withCaptions, style: o.style, logo: o.logo,
+  });
+  toast('Gerando o vídeo... acompanhe em Atividades.');
+}
+
+function reelsPanel({ r, isVideo, linkOnly, montageRanges }) {
+  const body = el('div', { class: 'tab-body' });
+  if (linkOnly || !isVideo) {
+    body.append(el('p', { class: 'empty' }, linkOnly
+      ? 'Para gravar legenda no vídeo, transcreva pelo modo "Vídeo + transcrição" (o vídeo precisa estar no computador).'
+      : 'Este arquivo é só áudio: não dá para gravar legenda.'));
+    return body;
+  }
+  let withCaptions = true;
+  let previewIndex = Math.max(0, Math.floor(r.segments.length * 0.2));
+  const save = (patch) => saveSetting(patch);
+  const style = () => ({ ...state.settings.captionStyle });
+  const setStyle = (patch) => { save({ captionStyle: { ...style(), ...patch } }).then(drawControls); };
+  const previewImg = el('img', { class: 'reels-preview hidden', alt: 'Prévia' });
+  const previewMsg = el('p', { class: 'muted' }, 'Clique em "Ver prévia" para ver um quadro com o formato, a legenda e o logo.');
+  const controls = el('div', {});
+
+  async function doPreview() {
+    if (!r.segments.length) return;
+    const sg = r.segments[previewIndex % r.segments.length];
+    const inside = (sg.words || []).filter((w) => w.start >= sg.start && w.end <= sg.end);
+    const w = inside[Math.min(1, inside.length - 1)];
+    const at = w ? (w.start + w.end) / 2 - sg.start : (sg.end - sg.start) / 2;
+    previewMsg.textContent = 'Gerando a prévia...';
+    try {
+      const o = reelsOptions();
+      const png = await api.montage.preview(r.file, { start: sg.start, end: sg.end }, { ...o, withCaptions, at: Math.max(0, at) });
+      previewImg.src = `${fileUrl(png)}?v=${Date.now()}`;
+      previewImg.classList.remove('hidden');
+      previewMsg.textContent = `Prévia em ${clock(sg.start)}: "${sg.text.slice(0, 80)}"`;
+    } catch (err) {
+      previewMsg.textContent = `Não foi possível gerar a prévia: ${cleanErr(err)}`;
+    }
+  }
+
+  async function drawControls() {
+    const meta = await loadReelsMeta();
+    const st = state.settings.captionStyle;
+    const lg = state.settings.logo || {};
+    const select = (value, options, onChange) => {
+      const sel = el('select', { onchange: (e) => onChange(e.target.value) },
+        ...options.map(([v, label]) => el('option', { value: v, selected: String(v) === String(value) }, label)));
+      return sel;
+    };
+    const color = (value, onChange) => el('input', { type: 'color', value, class: 'color', onchange: (e) => onChange(e.target.value) });
+    const field = (label, ...inner) => el('div', { class: 'field' }, el('label', {}, label), ...inner);
+
+    controls.replaceChildren(
+      el('div', { class: 'grid2' },
+        field('Formato',
+          select(state.settings.reelsFormat, [['', 'Original (horizontal)'], ...Object.entries(meta.formats).map(([k, f]) => [k, f.label])],
+            (v) => save({ reelsFormat: v }))),
+        field('Estilo pronto',
+          select(st.preset, Object.keys(meta.presets).map((k) => [k, PRESET_LABELS[k] || k]),
+            (v) => setStyle({ ...meta.presets[v], preset: v, keywords: st.keywords, keywordColor: st.keywordColor })))),
+      el('label', { class: 'check-inline' },
+        el('input', { type: 'checkbox', checked: withCaptions, onchange: (e) => { withCaptions = e.target.checked; } }),
+        ' Gravar legenda no vídeo'),
+      el('details', { class: 'extras', open: true },
+        el('summary', {}, el('span', {}, 'Ajustar a legenda')),
+        el('div', { class: 'grid3' },
+          field('Fonte', select(st.font, Object.entries(FONT_LABELS), (v) => setStyle({ font: v }))),
+          field('Tamanho', select(st.size, [['s', 'Pequeno'], ['m', 'Médio'], ['l', 'Grande']], (v) => setStyle({ size: v }))),
+          field('Posição', select(st.position, [['low', 'Embaixo'], ['middle', 'No meio'], ['high', 'Em cima']], (v) => setStyle({ position: v }))),
+          field('Palavras por vez', select(st.maxWords, [[1, '1'], [2, '2'], [3, 'até 3'], [5, 'até 5 (frase)']], (v) => setStyle({ maxWords: Number(v) }))),
+          field('Cor do texto', color(st.textColor, (v) => setStyle({ textColor: v }))),
+          field('Cor da palavra falada', color(st.highlight, (v) => setStyle({ highlight: v })))),
+        el('div', { class: 'row', style: 'gap:18px; flex-wrap:wrap' },
+          el('label', { class: 'check-inline' }, el('input', { type: 'checkbox', checked: !!st.uppercase, onchange: (e) => setStyle({ uppercase: e.target.checked }) }), ' MAIÚSCULAS'),
+          el('label', { class: 'check-inline' }, el('input', { type: 'checkbox', checked: !!st.box, onchange: (e) => setStyle({ box: e.target.checked }) }), ' Caixa atrás do texto'),
+          st.box ? el('label', { class: 'check-inline' }, 'cor da caixa ', color(st.boxColor || '#111111', (v) => setStyle({ boxColor: v }))) : null),
+        el('div', { class: 'grid2' },
+          field('Palavras em destaque (maiores e em outra cor)',
+            el('input', {
+              value: st.keywords || '', placeholder: 'ex.: Ana, Rafael, sim, gol, Brasil',
+              onchange: (e) => setStyle({ keywords: e.target.value }),
+            })),
+          field('Cor do destaque', color(st.keywordColor || '#FF5A4E', (v) => setStyle({ keywordColor: v }))))),
+      el('details', { class: 'extras', open: !!lg.path },
+        el('summary', {}, el('span', {}, 'Logo / marca d\'água'), el('span', { class: 'extras-count' }, lg.path ? basename(lg.path) : 'nenhum')),
+        el('div', { class: 'row', style: 'flex-wrap:wrap; margin-top:10px' },
+          el('button', {
+            class: 'btn small',
+            onclick: async () => {
+              const img = await api.dialog.image();
+              if (img) { await save({ logo: { ...lg, path: img } }); drawControls(); }
+            },
+          }, lg.path ? 'Trocar logo' : 'Escolher logo (PNG com fundo transparente)'),
+          lg.path ? el('button', { class: 'link', onclick: async () => { await save({ logo: { ...lg, path: '' } }); drawControls(); } }, 'remover') : null),
+        lg.path ? el('div', { class: 'grid3' },
+          field('Canto', select(lg.position || 'tr', [['tr', 'Superior direito'], ['tl', 'Superior esquerdo'], ['br', 'Inferior direito'], ['bl', 'Inferior esquerdo']],
+            (v) => save({ logo: { ...lg, position: v } }).then(drawControls))),
+          field(`Tamanho (${lg.size || 15}% da largura)`, el('input', {
+            type: 'range', min: '5', max: '40', step: '1', value: String(lg.size || 15),
+            onchange: (e) => save({ logo: { ...lg, size: Number(e.target.value) } }).then(drawControls),
+          })),
+          field(`Opacidade (${lg.opacity || 90}%)`, el('input', {
+            type: 'range', min: '20', max: '100', step: '5', value: String(lg.opacity || 90),
+            onchange: (e) => save({ logo: { ...lg, opacity: Number(e.target.value) } }).then(drawControls),
+          }))) : null),
+    );
+  }
+
+  body.append(
+    el('p', { class: 'hint' }, 'Escolha o formato e o estilo, confira na prévia e gere. As escolhas ficam salvas para os próximos vídeos.'),
+    controls,
+    el('div', { class: 'export-row' },
+      el('button', { class: 'btn', onclick: doPreview }, 'Ver prévia'),
+      el('button', { class: 'btn', onclick: () => { previewIndex += Math.max(1, Math.floor(r.segments.length / 7)); doPreview(); } }, 'Prévia em outra frase')),
+    previewMsg,
+    previewImg,
+    el('div', { class: 'export-row' },
+      el('button', {
+        class: 'btn primary',
+        onclick: () => generateVideo(r, [{ start: 0, end: r.info.duration }], {
+          title: `${basename(r.file)} legendado`, outputTitle: `${basename(r.file).replace(/\.[^.]+$/, '')} - legendado`, withCaptions,
+        }),
+      }, 'Gerar o vídeo inteiro'),
+      el('button', {
+        class: 'btn',
+        onclick: () => {
+          const rg = montageRanges();
+          if (!rg.length) { toast('Escolha frases na aba Texto (botão +) para montar um corte.', true); return; }
+          generateVideo(r, rg, { title: `Montagem de ${basename(r.file)}`, withCaptions });
+        },
+      }, 'Gerar só a montagem (frases escolhidas)')));
+  drawControls();
+  return body;
+}
+
 function renderTranscript(r) {
   if (!r) return;
   state.transcript = r;
@@ -1274,9 +1435,6 @@ function renderTranscript(r) {
   const montageBox = el('div', { class: 'tab-body' });
   const padSel = el('select', { style: 'width:auto' },
     el('option', { value: '0' }, 'sem folga'), el('option', { value: '0.25', selected: true }, 'folga de 0,25 s'), el('option', { value: '0.5' }, 'folga de 0,5 s'));
-  const vertSel = el('select', { style: 'width:auto' },
-    el('option', { value: '' }, 'Formato original'), el('option', { value: 'blur' }, 'Vertical 9:16 com fundo desfocado'), el('option', { value: 'crop' }, 'Vertical 9:16 cortando o centro'));
-  const capChk = el('input', { type: 'checkbox' });
   const ranges = () => {
     const pad = Number(padSel.value);
     return montage.items.map((x, n) => {
@@ -1312,7 +1470,7 @@ function renderTranscript(r) {
         : el('p', { class: 'empty' }, 'Nenhuma frase escolhida ainda.'),
       el('p', { class: 'muted' }, `Duração da montagem: ${fmtSecs(total)}`),
       el('div', { class: 'export-row' },
-        padSel, vertSel, el('label', { class: 'check-inline' }, capChk, ' legenda estilo Reels'),
+        padSel,
         el('button', {
           class: 'btn',
           onclick: () => {
@@ -1339,13 +1497,10 @@ function renderTranscript(r) {
           onclick: async () => {
             if (!montage.items.length) { toast('Escolha frases primeiro.', true); return; }
             if (!isVideo) { toast('Este arquivo é só áudio: use a timeline XML.', true); return; }
-            await api.jobs.add('montage', {
-              file: r.file, title: `Montagem de ${basename(r.file)}`, ranges: ranges(),
-              vertical: vertSel.value, withCaptions: capChk.checked, outDir: r.outDir,
-            });
-            toast('Gerando o vídeo... acompanhe em Atividades.');
+            await generateVideo(r, ranges(), { title: `Montagem de ${basename(r.file)}` });
           },
         }, 'Gerar vídeo'),
+        el('button', { class: 'link', onclick: () => tabs.show('reels') }, 'formato e legenda...'),
         montage.items.length ? el('button', { class: 'link', onclick: () => { montage.items = []; drawMontage(); drawList(); } }, 'Limpar') : null));
   }
 
@@ -1362,8 +1517,6 @@ function renderTranscript(r) {
       : el('p', { class: 'empty' }, 'Vídeo curto demais para capítulos (o YouTube pede pelo menos 3 capítulos de 10 s).'));
 
   // ---- aba Exportar ----
-  const fullVert = el('select', { style: 'width:auto' },
-    el('option', { value: 'blur' }, 'Vertical com fundo desfocado'), el('option', { value: 'crop' }, 'Vertical cortando o centro'), el('option', { value: '' }, 'Formato original'));
   const exportTab = el('div', { class: 'tab-body' },
     el('div', { class: 'export-grid' },
       el('div', { class: 'card' }, el('h3', {}, 'Texto e legendas'),
@@ -1394,35 +1547,27 @@ function renderTranscript(r) {
             toast('Montando a decupagem... acompanhe em Atividades.');
           },
         }, 'Gerar decupagem')),
-      el('div', { class: 'card' }, el('h3', {}, 'Vídeo inteiro com legenda gravada'),
-        el('p', {}, 'Legenda grande estilo Reels, com a palavra atual destacada.'),
-        el('div', { class: 'row' }, fullVert,
-          el('button', {
-            class: 'btn',
-            disabled: !isVideo,
-            onclick: async () => {
-              await api.jobs.add('montage', {
-                file: r.file, title: `${basename(r.file)} com legenda`, ranges: [{ start: 0, end: r.info.duration }],
-                vertical: fullVert.value, withCaptions: true, outDir: r.outDir, outputTitle: `${basename(r.file)} - legendado`,
-              });
-              toast('Gravando a legenda... acompanhe em Atividades.');
-            },
-          }, 'Gerar')))));
+      el('div', { class: 'card' }, el('h3', {}, 'Vídeo com legenda gravada'),
+        el('p', {}, 'Reels, Shorts e TikTok: formato, estilo da legenda, logo e prévia.'),
+        el('button', { class: 'btn', disabled: !isVideo, onclick: () => tabs.show('reels') }, 'Abrir "Legenda e Reels"'))));
 
+  let resultBox = null;
   const tabs = makeTabs([
     { id: 'text', label: 'Texto', body: textTab },
     { id: 'montage', label: 'Montagem (0)', body: montageBox },
+    { id: 'reels', label: 'Legenda e Reels', body: reelsPanel({ r, isVideo, linkOnly, montageRanges: () => ranges() }) },
     { id: 'chapters', label: 'Capítulos', body: chaptersTab },
     { id: 'export', label: 'Exportar', body: exportTab },
-  ]);
+  ], (id) => { if (resultBox) resultBox.classList.toggle('sticky-player', id === 'text'); });
 
-  const box = el('div', { class: 'result' },
+  const box = el('div', { class: 'result sticky-player' },
     el('h3', {}, `${basename(r.file)}`),
     el('p', { class: 'hint' }, `Fonte: ${r.source || 'whisper'}${r.model && r.source === 'whisper' ? ` · modelo ${r.model}` : ''}${r.url ? ' · ' : ''}`,
       r.url ? el('button', { class: 'link', onclick: () => api.shell.external(r.url) }, 'abrir o link original') : null),
     el('div', { class: 'player-wrap' }, player),
     r.metrics ? scriptStats(r.metrics) : null,
     tabs.node);
+  resultBox = box;
   drawList();
   drawMontage();
   $('#transcriptResult').replaceChildren(box);
@@ -1440,7 +1585,7 @@ function linkAt(url, t) {
   return url;
 }
 
-function makeTabs(items) {
+function makeTabs(items, onShow) {
   const heads = new Map();
   const bodies = new Map();
   const bar = el('div', { class: 'tabs' });
@@ -1448,6 +1593,7 @@ function makeTabs(items) {
   const show = (id) => {
     for (const [k, h] of heads) h.classList.toggle('on', k === id);
     holder.replaceChildren(bodies.get(id));
+    if (onShow) onShow(id);
   };
   for (const it of items) {
     const h = el('button', { class: 'tab', onclick: () => show(it.id) }, it.label);

@@ -24,7 +24,7 @@ contextBridge.exposeInMainWorld('api', {
     onProgress: on('update:progress'),
   },
   settings: { get: invoke('settings:get'), set: invoke('settings:set') },
-  dialog: { folder: invoke('dialog:folder'), video: invoke('dialog:video'), folderOnly: invoke('dialog:folderOnly') },
+  dialog: { folder: invoke('dialog:folder'), video: invoke('dialog:video'), folderOnly: invoke('dialog:folderOnly'), image: invoke('dialog:image') },
   jobs: {
     list: invoke('jobs:list'),
     add: invoke('jobs:add'),
@@ -45,7 +45,8 @@ contextBridge.exposeInMainWorld('api', {
     update: invoke('transcript:update'),
     searchAll: invoke('transcript:searchAll'),
   },
-  montage: { exportXml: invoke('montage:exportXml') },
+  montage: { exportXml: invoke('montage:exportXml'), preview: invoke('montage:preview') },
+  captions: { presets: invoke('captions:presets') },
   compare: { load: invoke('compare:load') },
   listMedia: invoke('fs:listMedia'),
   urlInfo: invoke('url:info'),

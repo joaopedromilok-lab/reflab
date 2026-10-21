@@ -39,6 +39,12 @@ function init(dir, downloadsDir) {
     useYoutubeSubs: true,
     transcribeAudioOnly: false,
     transcribeUrlMode: 'text',
+    reelsFormat: '9x16-blur',
+    captionStyle: {
+      preset: 'amarelo', font: 'Anton', textColor: '#FFFFFF', highlight: '#FFD23F', keywordColor: '#FF5A4E',
+      keywords: '', uppercase: true, size: 'm', position: 'low', maxWords: 3, box: false, boxColor: '#111111',
+    },
+    logo: { path: '', position: 'tr', size: 15, opacity: 90 },
     afterTranscribe: false,
     afterAnalyze: false,
     silenceNoise: -35,
