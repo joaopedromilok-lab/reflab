@@ -1,0 +1,86 @@
+RefLab - Baixador e laboratório de referências para editores de vídeo
+=====================================================================
+
+Para quem: editor de vídeo (Premiere Pro / DaVinci Resolve) num MacBook M1.
+Objetivo: baixar vídeos para uso pessoal e estudo, já em formatos que abrem
+no editor sem travar, e ter ferramentas para estudar a edição dos vídeos.
+
+Por que existe: o YouTube entrega 4K em AV1/VP9 com áudio Opus. O M1 não
+decodifica AV1 no chip, e o QuickTime/Premiere/DaVinci lidam mal com esses
+formatos. O RefLab converte automaticamente para formatos de edição.
+
+Base técnica: yt-dlp (download) + ffmpeg (conversão e análise) + Deno
+(necessário para o yt-dlp funcionar bem com o YouTube). Interface em Electron.
+O app baixa e atualiza essas ferramentas sozinho.
+
+
+1. DOWNLOAD COM PRESETS PARA EDIÇÃO
+-----------------------------------
+- Edição leve: H.264 + AAC (.mp4). Até 1080p, abre em qualquer lugar.
+  Quando o YouTube já entrega assim, não reconverte (rápido, sem perda).
+- Edição 4K: HEVC/H.265 + AAC (.mp4). 4K em arquivo menor, conversão
+  acelerada pelo chip do Mac (VideoToolbox).
+- Edição profissional: ProRes 422 + PCM (.mov). O mais fluido na timeline.
+  Arquivo grande.
+- Original: sem conversão (o melhor que o site oferecer).
+- Só áudio: WAV (para edição) ou MP3, com opção de normalizar o volume.
+- Escolha de resolução máxima (4K, 1440p, 1080p, 720p...).
+- Frame rate constante nas conversões (evita dessincronizar áudio).
+
+2. CORTAR TRECHO ANTES DE BAIXAR
+--------------------------------
+- Baixa só de 1:20 até 1:45, por exemplo, sem baixar o vídeo inteiro.
+
+3. ORGANIZAÇÃO
+--------------
+- Escolher a pasta de destino.
+- Subpastas automáticas: nenhuma / por data / por canal / por projeto.
+- Arquivo .txt ao lado do vídeo com link original, autor, data e
+  descrição (crédito da referência).
+- Miniatura em alta qualidade (opcional).
+- Legendas em .srt (opcional; legenda automática quando não houver outra).
+
+4. FILA, PLAYLISTS E OUTROS SITES
+---------------------------------
+- Fila de downloads com progresso, velocidade e tempo restante.
+- Cancelar download.
+- Playlists: opção de baixar a playlist inteira ou só o vídeo.
+- Mix automático do YouTube (list=RD...) é ignorado (era o que travava
+  o Parabolic em "Verificando o Link").
+- Funciona com YouTube, Instagram, TikTok, Vimeo, X e outros sites
+  suportados pelo yt-dlp.
+
+5. FERRAMENTAS DE ESTUDO (funcionam em vídeos baixados ou arquivos do Mac)
+--------------------------------------------------------------------------
+- Análise de cortes: detecta cada corte do vídeo e mostra:
+  * número de planos, duração média, plano mais curto e mais longo;
+  * gráfico do ritmo da edição (onde acelera / desacelera).
+- Exportar para o editor:
+  * XML (Premiere e DaVinci): timeline já cortada em cada plano;
+  * EDL com marcadores (DaVinci);
+  * CSV com a lista de cortes (planilha).
+- Dividir em planos: um arquivo de vídeo por plano, para remontar.
+- Folha de contato: imagem com um frame de cada plano + página HTML com
+  os frames e os tempos.
+- Extrair frames em PNG: num tempo específico ou a cada X segundos.
+
+6. FERRAMENTAS PRÁTICAS
+-----------------------
+- Proxy automático: gera versão leve (ProRes Proxy) junto do arquivo
+  original para editar 4K sem travar.
+- Converter arquivo local para um preset de edição (ex.: um AV1 que já
+  está no Mac -> HEVC ou ProRes).
+
+7. HISTÓRICO E MANUTENÇÃO
+-------------------------
+- Histórico de tudo que foi baixado, com busca.
+- Abrir arquivo / mostrar no Finder.
+- Atualização do yt-dlp com um clique (e checagem automática ao abrir).
+  Essencial: o YouTube muda com frequência e downloaders desatualizados
+  param de funcionar.
+
+8. DISTRIBUIÇÃO
+---------------
+- GitHub Actions gera o app para Mac (Apple Silicon) e Windows.
+- Na primeira vez no Mac: rodar  xattr -cr /Applications/RefLab.app
+  (o app não é assinado pela Apple, que cobra US$ 99/ano).

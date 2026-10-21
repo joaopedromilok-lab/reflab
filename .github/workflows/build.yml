@@ -1,0 +1,67 @@
+name: Gerar app
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    name: Mac (Apple Silicon)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx electron-builder --mac --arm64 --publish never
+      - name: Assinatura local (ad-hoc), DMG e ZIP
+        run: |
+          APP="dist/mac-arm64/RefLab.app"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict "$APP"
+          mkdir dmg
+          cp -R "$APP" dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname RefLab -srcfolder dmg -ov -format UDZO RefLab-mac-arm64.dmg
+          ditto -c -k --keepParent "$APP" RefLab-mac-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RefLab-mac-arm64
+          path: |
+            RefLab-mac-arm64.dmg
+            RefLab-mac-arm64.zip
+      - name: Publicar na release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            RefLab-mac-arm64.dmg
+            RefLab-mac-arm64.zip
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx electron-builder --win --x64 --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RefLab-windows
+          path: dist/*.exe
+      - name: Publicar na release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe

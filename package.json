@@ -1,0 +1,60 @@
+{
+  "name": "reflab",
+  "productName": "RefLab",
+  "version": "1.0.0",
+  "description": "Baixador e laboratório de referências para editores de vídeo",
+  "main": "src/main/main.js",
+  "author": "RefLab",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac --arm64",
+    "dist:win": "electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "com.reflab.app",
+    "productName": "RefLab",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "mac": {
+      "category": "public.app-category.video",
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "extract-zip": "^2.0.1"
+  },
+  "devDependencies": {
+    "electron": "^44.9.2",
+    "electron-builder": "^26.15.3"
+  }
+}

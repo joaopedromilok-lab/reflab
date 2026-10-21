@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>RefLab</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><span class="logo">●</span> RefLab</div>
+      <nav>
+        <button class="nav active" data-view="download"><span>⬇</span> Baixar</button>
+        <button class="nav" data-view="study"><span>✂</span> Estudar edição</button>
+        <button class="nav" data-view="tools"><span>⚙</span> Ferramentas</button>
+        <button class="nav" data-view="history"><span>☰</span> Histórico</button>
+        <button class="nav" data-view="settings"><span>✦</span> Ajustes</button>
+      </nav>
+      <div class="sidebar-foot" id="toolsBadge">Verificando ferramentas...</div>
+    </aside>
+
+    <main class="content">
+      <!-- BAIXAR -->
+      <section class="view active" id="view-download">
+        <header class="view-head">
+          <h1>Baixar referências</h1>
+          <p>Cole um ou mais links (um por linha). YouTube, Instagram, TikTok, Vimeo, X e muitos outros.</p>
+        </header>
+
+        <textarea id="urls" rows="3" placeholder="https://www.youtube.com/watch?v=..."></textarea>
+
+        <h3 class="label">Formato para edição</h3>
+        <div class="presets" id="presets"></div>
+        <p class="hint" id="presetHint"></p>
+
+        <div class="grid2">
+          <div class="field">
+            <label>Resolução máxima</label>
+            <select id="maxHeight">
+              <option value="0">Máxima disponível</option>
+              <option value="2160">4K (2160p)</option>
+              <option value="1440">1440p</option>
+              <option value="1080">1080p</option>
+              <option value="720">720p</option>
+              <option value="480">480p</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Baixar só um trecho <span class="muted">(opcional)</span></label>
+            <div class="row">
+              <input id="trimStart" placeholder="início ex.: 1:20">
+              <span class="muted">até</span>
+              <input id="trimEnd" placeholder="fim ex.: 1:45">
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Pasta de destino</label>
+          <div class="row">
+            <div class="path" id="outputDir"></div>
+            <button class="btn" id="pickOutput">Alterar</button>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="field">
+            <label>Organizar em subpastas</label>
+            <select id="organize">
+              <option value="none">Não organizar</option>
+              <option value="date">Por data</option>
+              <option value="channel">Por canal / autor</option>
+              <option value="project">Por projeto</option>
+            </select>
+            <input id="projectName" class="hidden" placeholder="Nome do projeto (ex.: Clipe da banda X)">
+          </div>
+          <div class="field">
+            <label>Nome do arquivo</label>
+            <select id="nameTemplate">
+              <option value="title">Título do vídeo</option>
+              <option value="title_id">Título [ID]</option>
+              <option value="channel_title">Canal - Título</option>
+            </select>
+          </div>
+        </div>
+
+        <details class="extras" open>
+          <summary>Extras</summary>
+          <div class="checks">
+            <label><input type="checkbox" id="proxy"> Gerar proxy (ProRes Proxy) para editar 4K sem travar</label>
+            <label><input type="checkbox" id="subtitles"> Baixar legendas (.srt)</label>
+            <label><input type="checkbox" id="thumbnail"> Salvar miniatura em alta</label>
+            <label><input type="checkbox" id="infoTxt"> Salvar .txt com link e crédito do autor</label>
+            <label><input type="checkbox" id="playlist"> Se o link for de playlist, baixar a playlist inteira</label>
+            <label><input type="checkbox" id="keepOriginal"> Manter também o arquivo original (antes da conversão)</label>
+            <label><input type="checkbox" id="normalizeAudio"> Normalizar volume (só nos formatos de áudio)</label>
+          </div>
+        </details>
+
+        <div class="actions">
+          <button class="btn primary big" id="startDownload">Baixar</button>
+        </div>
+      </section>
+
+      <!-- ESTUDAR -->
+      <section class="view" id="view-study">
+        <header class="view-head">
+          <h1>Estudar a edição</h1>
+          <p>Detecta cada corte do vídeo, mede o ritmo da montagem e gera uma timeline cortada para abrir no Premiere ou no DaVinci.</p>
+        </header>
+        <div class="drop" id="studyDrop">
+          <div><b>Arraste um vídeo aqui</b> ou <button class="link" id="studyPick">escolha um arquivo</button></div>
+          <div class="muted" id="studyFile">Nenhum vídeo selecionado</div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label>Sensibilidade de detecção <span class="muted" id="thrLabel"></span></label>
+            <input type="range" id="sceneThreshold" min="0.1" max="0.6" step="0.05">
+            <p class="hint">Mais sensível encontra cortes sutis, mas pode marcar movimentos rápidos como corte.</p>
+          </div>
+          <div class="field">
+            <label>Ignorar planos menores que <span class="muted" id="minLabel"></span></label>
+            <input type="range" id="minShot" min="0" max="1.5" step="0.05">
+            <p class="hint">Evita contar flashes e piscadas como planos.</p>
+          </div>
+        </div>
+        <div class="actions"><button class="btn primary" id="studyRun" disabled>Analisar cortes</button></div>
+        <div id="studyResult"></div>
+      </section>
+
+      <!-- FERRAMENTAS -->
+      <section class="view" id="view-tools">
+        <header class="view-head">
+          <h1>Ferramentas</h1>
+          <p>Para vídeos que já estão no computador.</p>
+        </header>
+        <div class="drop" id="toolsDrop">
+          <div><b>Arraste um vídeo aqui</b> ou <button class="link" id="toolsPick">escolha um arquivo</button></div>
+          <div class="muted" id="toolsFile">Nenhum vídeo selecionado</div>
+        </div>
+        <div class="cards">
+          <div class="card">
+            <h3>Converter para edição</h3>
+            <p>Ex.: um AV1 ou WebM que não abre no Premiere → H.264, HEVC ou ProRes. O original é mantido.</p>
+            <div class="row">
+              <select id="convertPreset">
+                <option value="h264">H.264 (.mp4)</option>
+                <option value="hevc">HEVC / H.265 (.mp4)</option>
+                <option value="prores">ProRes 422 (.mov)</option>
+                <option value="wav">Só áudio WAV</option>
+                <option value="mp3">Só áudio MP3</option>
+              </select>
+              <button class="btn primary needs-file" id="convertRun">Converter</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Gerar proxy</h3>
+            <p>Cria uma versão leve (ProRes Proxy, 720p) na subpasta "Proxy". O DaVinci liga sozinho; no Premiere use "Proxy &gt; Anexar proxies".</p>
+            <button class="btn primary needs-file" id="proxyRun">Gerar proxy</button>
+          </div>
+          <div class="card">
+            <h3>Extrair um frame</h3>
+            <p>Salva um frame em PNG na qualidade original.</p>
+            <div class="row">
+              <input id="frameTime" placeholder="tempo ex.: 1:23.5">
+              <button class="btn primary needs-file" id="frameRun">Extrair</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Extrair frames em intervalo</h3>
+            <p>Um PNG a cada X segundos: bom para moodboard e referência de cor.</p>
+            <div class="row">
+              <input id="frameEvery" placeholder="a cada (s) ex.: 2" value="2">
+              <button class="btn primary needs-file" id="framesRun">Extrair</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- HISTÓRICO -->
+      <section class="view" id="view-history">
+        <header class="view-head row-between">
+          <div>
+            <h1>Histórico</h1>
+            <p>Tudo que já foi baixado.</p>
+          </div>
+          <button class="btn" id="historyClear">Limpar histórico</button>
+        </header>
+        <input id="historySearch" placeholder="Buscar por título, canal ou site...">
+        <div id="historyList" class="history"></div>
+      </section>
+
+      <!-- AJUSTES -->
+      <section class="view" id="view-settings">
+        <header class="view-head"><h1>Ajustes</h1></header>
+        <div class="grid2">
+          <div class="field">
+            <label>Tarefas ao mesmo tempo</label>
+            <select id="concurrency">
+              <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Usar cookies do navegador</label>
+            <select id="cookiesBrowser">
+              <option value="">Não usar</option>
+              <option value="chrome">Chrome</option>
+              <option value="safari">Safari</option>
+              <option value="firefox">Firefox</option>
+              <option value="edge">Edge</option>
+              <option value="brave">Brave</option>
+              <option value="opera">Opera</option>
+              <option value="vivaldi">Vivaldi</option>
+            </select>
+            <p class="hint">Use se o YouTube pedir login ("Sign in to confirm you're not a bot") ou para vídeos com restrição de idade. Use um navegador em que você esteja logado.</p>
+          </div>
+          <div class="field">
+            <label>Idiomas das legendas</label>
+            <input id="subLangs">
+            <p class="hint">Padrão: pt,pt-BR,en,en-US (legendas originais; traduções automáticas costumam ser bloqueadas pelo YouTube)</p>
+          </div>
+          <div class="field">
+            <label class="check"><input type="checkbox" id="autoUpdate"> Atualizar o yt-dlp automaticamente (1x por dia)</label>
+          </div>
+        </div>
+
+        <h3 class="label">Ferramentas</h3>
+        <div class="card">
+          <div id="toolVersions" class="versions">Carregando...</div>
+          <div class="row">
+            <button class="btn" id="updateYtdlp">Atualizar yt-dlp agora</button>
+            <button class="btn" id="reinstallTools">Reinstalar ferramentas</button>
+          </div>
+          <pre id="toolOutput" class="output hidden"></pre>
+        </div>
+        <p class="hint" id="aboutLine"></p>
+      </section>
+    </main>
+
+    <aside class="activity">
+      <div class="activity-head">
+        <h2>Atividades</h2>
+        <button class="link" id="clearFinished">Limpar concluídas</button>
+      </div>
+      <div id="jobList" class="jobs"><p class="empty">Nada por aqui ainda.</p></div>
+    </aside>
+  </div>
+
+  <div class="overlay hidden" id="setup">
+    <div class="setup-box">
+      <h2>Preparando o RefLab</h2>
+      <p>Na primeira vez, o app baixa as ferramentas de download e conversão (yt-dlp, ffmpeg e Deno). São cerca de 150 MB, uma vez só.</p>
+      <div class="bar"><div id="setupBar"></div></div>
+      <p class="muted" id="setupMsg">Começando...</p>
+      <button class="btn primary hidden" id="setupRetry">Tentar de novo</button>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
