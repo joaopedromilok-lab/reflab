@@ -76,18 +76,23 @@ const state = {
 };
 
 const PRESETS = [
-  { id: 'h264', name: 'Edição leve', codec: 'H.264 + AAC · .mp4', desc: 'Abre em qualquer editor e no QuickTime.', tag: 'recomendado' },
-  { id: 'hevc', name: 'Edição 4K', codec: 'HEVC + AAC · .mp4', desc: '4K em arquivo menor, usando o chip do Mac.' },
-  { id: 'prores', name: 'Profissional', codec: 'ProRes 422 · .mov', desc: 'O mais fluido na timeline. Arquivo grande.' },
-  { id: 'original', name: 'Original', codec: 'sem conversão', desc: 'Como o site entrega (pode ser AV1/VP9).' },
-  { id: 'wav', name: 'Só áudio WAV', codec: 'PCM 24-bit · .wav', desc: 'Para trilha e referência sonora.' },
-  { id: 'mp3', name: 'Só áudio MP3', codec: 'MP3 320k · .mp3', desc: 'Arquivo pequeno.' },
+  { id: 'h264', name: 'H.264', codec: 'MP4 · mais compatível', desc: 'Boa escolha para a maioria dos editores.', tag: 'recomendado' },
+  { id: 'hevc', name: 'HEVC / H.265', codec: 'MP4 · arquivo menor', desc: 'Bom para 4K em Macs recentes.' },
+  { id: 'prores', name: 'ProRes 422', codec: 'MOV · edição fluida', desc: 'Mais fácil de editar; ocupa mais espaço.' },
+  { id: 'original', name: 'Original', codec: 'sem conversão', desc: 'Mais rápido, mas pode não abrir no editor.' },
+  { id: 'wav', name: 'Áudio WAV', codec: 'sem perda · arquivo maior', desc: 'Para editar música e voz com qualidade.' },
+  { id: 'mp3', name: 'Áudio MP3', codec: 'arquivo menor', desc: 'Para ouvir ou compartilhar.' },
 ];
 
 // ---------- navegação ----------
 
 function showView(name) {
-  $$('.nav').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
+  $$('.nav').forEach((b) => {
+    const active = b.dataset.view === name;
+    b.classList.toggle('active', active);
+    if (active) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${name}`));
   if (name === 'history') loadHistory();
   if (name === 'transcript') loadModels();
@@ -117,6 +122,8 @@ function renderPresets() {
   const box = $('#presets');
   box.replaceChildren(...PRESETS.map((p) => el('button', {
     class: `preset${state.settings.preset === p.id ? ' active' : ''}`,
+    type: 'button',
+    'aria-pressed': state.settings.preset === p.id,
     onclick: async () => {
       const patch = { preset: p.id };
       if (p.id === 'h264' && (!state.settings.maxHeight || state.settings.maxHeight > 1080)) patch.maxHeight = 1080;
@@ -131,23 +138,56 @@ function renderPresets() {
 
 function updateHints() {
   const s = state.settings;
-  let hint = '';
-  if (s.preset === 'h264' && (!s.maxHeight || s.maxHeight > 1080)) {
-    hint = 'O YouTube só oferece H.264 até 1080p. Acima disso o vídeo será reconvertido para H.264 (mais lento). Para 4K, prefira "Edição 4K".';
-  } else if (s.preset === 'prores') {
-    hint = 'ProRes ocupa bastante espaço: cerca de 1 GB por minuto em 1080p e 4 GB por minuto em 4K.';
-  } else if (s.preset === 'original') {
-    hint = 'Sem conversão: vídeos do YouTube em 4K vêm em AV1/VP9, que o Premiere e o QuickTime não abrem bem no M1.';
-  } else if (s.preset === 'hevc') {
-    hint = 'HEVC abre no Premiere e no DaVinci e usa o chip do Mac para decodificar.';
-  }
+  const isAudio = ['wav', 'mp3'].includes(s.preset);
+  const hints = {
+    h264: 'Mais compatível. Se escolher 4K, a conversão pode levar mais tempo.',
+    hevc: 'Gera arquivos menores em 4K. Se o editor não abrir, tente H.264.',
+    prores: 'Bom para timelines pesadas. Os arquivos ocupam bastante espaço.',
+    original: 'Sem conversão. Mais rápido, mas o editor pode não aceitar o formato de origem.',
+    wav: 'Áudio sem perda, indicado para editar música e voz.',
+    mp3: 'Áudio menor para ouvir ou compartilhar.',
+  };
+  const hint = hints[s.preset] || '';
   $('#presetHint').textContent = hint;
+  $('#presetHint').classList.toggle('hidden', !hint);
+  $('#resolutionField').classList.toggle('hidden', isAudio);
+  $('#audioPresetNote').classList.toggle('hidden', !isAudio);
+  $('#sectionsHint').textContent = isAudio
+    ? 'Os tempos são aplicados à música ou ao áudio do vídeo.'
+    : 'Separe vários trechos por vírgula. Cada um vira um arquivo.';
+  for (const id of ['proxyOption', 'subtitlesOption', 'thumbnailOption', 'afterAnalyzeOption']) {
+    $(`#${id}`).classList.toggle('hidden', isAudio);
+  }
+  $('#normalizeAudioOption').classList.toggle('hidden', !isAudio);
   $('#outputDir').textContent = s.outputDir;
   $('#outputDir').title = s.outputDir;
+  $('#outputFolderName').textContent = basename(s.outputDir) || 'Pasta de downloads';
+  $('#outputFolderName').title = s.outputDir;
   $('#projectName').classList.toggle('hidden', s.organize !== 'project');
   $('#thrLabel').textContent = `(${Math.round(((0.6 - s.sceneThreshold) / 0.5) * 100)}%)`;
   $('#minLabel').textContent = `(${Number(s.minShot).toFixed(2)}s)`;
   $('#momSensLabel').textContent = `(${Math.round(((16 - s.momentSensitivity) / 12) * 100)}%)`;
+}
+
+function updateActivitySummary() {
+  const jobs = [...state.jobs.values()];
+  const active = jobs.filter((job) => job.status === 'running' || job.status === 'queued');
+  const downloads = active.filter((job) => job.kind === 'download');
+  $('#activityCount').textContent = `${active.length} ${active.length === 1 ? 'ativa' : 'ativas'}`;
+  $('#activityCount').classList.toggle('busy', active.length > 0);
+  $('#downloadQueueDot').classList.toggle('busy', downloads.length > 0);
+  const running = downloads.filter((job) => job.status === 'running').length;
+  const queued = downloads.length - running;
+  if (downloads.length) {
+    const parts = [];
+    if (running) parts.push(`${running} baixando`);
+    if (queued) parts.push(`${queued} aguardando`);
+    $('#downloadQueueCount').textContent = `Na fila: ${parts.join(' · ')}.`;
+  } else if (jobs.some((job) => job.kind === 'download' && job.status === 'done')) {
+    $('#downloadQueueCount').textContent = 'Downloads concluídos. Não há itens aguardando.';
+  } else {
+    $('#downloadQueueCount').textContent = 'Sua fila está vazia. Os downloads aparecerão aqui.';
+  }
 }
 
 async function initSettings() {
@@ -192,6 +232,10 @@ async function initSettings() {
   $('#pickOutput').addEventListener('click', async () => {
     const dir = await api.dialog.folder(state.settings.outputDir);
     if (dir) { await saveSetting({ outputDir: dir }); updateHints(); }
+  });
+  $('#openOutput').addEventListener('click', async () => {
+    const error = await api.shell.open(state.settings.outputDir);
+    if (error) toast(`Não foi possível abrir a pasta: ${error}`, true);
   });
 }
 
@@ -276,6 +320,7 @@ $('#startDownload').addEventListener('click', async () => {
   if (s.organize === 'project' && !s.projectName.trim()) { toast('Digite o nome do projeto.', true); return; }
   const sections = $('#sections').value.trim();
   const videoPassword = $('#videoPassword').value;
+  const audioOnly = ['wav', 'mp3'].includes(s.preset);
   if (sections && !/^[\d:.,\s;\-–a]+$/i.test(sections)) { toast('Trechos inválidos. Use o formato 1:20-1:45, 3:00-3:30', true); return; }
   for (const url of urls) {
     await api.jobs.add('download', {
@@ -287,13 +332,13 @@ $('#startDownload').addEventListener('click', async () => {
       projectName: s.projectName,
       nameTemplate: s.nameTemplate,
       keepOriginal: s.keepOriginal,
-      proxy: s.proxy,
-      subtitles: s.subtitles,
+      proxy: audioOnly ? false : s.proxy,
+      subtitles: audioOnly ? false : s.subtitles,
       subLangs: s.subLangs,
-      thumbnail: s.thumbnail,
+      thumbnail: audioOnly ? false : s.thumbnail,
       infoTxt: s.infoTxt,
       playlist: s.playlist,
-      normalizeAudio: s.normalizeAudio,
+      normalizeAudio: audioOnly ? s.normalizeAudio : false,
       cookiesBrowser: s.cookiesBrowser,
       sections,
       videoPassword,
@@ -378,6 +423,7 @@ function renderJob(job) {
   const card = jobCard(job);
   if (old) old.replaceWith(card);
   else list.prepend(card);
+  updateActivitySummary();
 }
 
 api.jobs.onUpdate((job) => {
@@ -418,6 +464,7 @@ api.jobs.onRemoved((id) => {
   const node = $(`#jobList .job[data-id="${id}"]`);
   if (node) node.remove();
   if (!state.jobs.size) $('#jobList').replaceChildren(el('p', { class: 'empty' }, 'Nada por aqui ainda.'));
+  updateActivitySummary();
 });
 
 $('#clearFinished').addEventListener('click', () => api.jobs.clearFinished());
@@ -1506,6 +1553,7 @@ $('#updateBoxBtn').addEventListener('click', installUpdate);
     state.jobs.set(job.id, job);
     renderJob(job);
   }
+  updateActivitySummary();
   ensureTools();
   state.editors = await api.editors.list().catch(() => []);
   checkClipboard();
