@@ -1,6 +1,7 @@
 // Transcrição local com whisper.cpp (sem internet depois de baixar o modelo).
 // Mac: o whisper-cli vem dentro do app (compilado no GitHub Actions, com Metal).
 // Windows: é baixado das releases oficiais do whisper.cpp na primeira vez.
+// Para vídeos do YouTube, pode usar a legenda publicada pelo autor.
 const fs = require('fs');
 const fsp = fs.promises;
 const os = require('os');
@@ -9,6 +10,10 @@ const extract = require('extract-zip');
 const { start } = require('./proc');
 const tools = require('./tools');
 const media = require('./media');
+const captions = require('./captions');
+const script = require('./script');
+const { assetPath } = require('./paths');
+const { jsonStore } = require('./store');
 
 const IS_WIN = process.platform === 'win32';
 
@@ -20,8 +25,11 @@ const MODELS = {
 const MODEL_URL = (f) => `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${f}`;
 
 let modelsDir = null;
-function init(dir) {
+let index = null; // lista de transcrições, para a busca nas falas
+
+function init(dir, userData) {
   modelsDir = dir;
+  index = jsonStore(path.join(userData, 'transcricoes.json'), []);
 }
 
 function whisperDir() {
@@ -88,7 +96,7 @@ async function ensureWhisper(onPhase, onProgress) {
 }
 
 async function ensureModel(model, onPhase, onProgress) {
-  const m = MODELS[model] || MODELS.small;
+  const m = MODELS[model] || MODELS.turbo;
   await fsp.mkdir(modelsDir, { recursive: true });
   const dest = path.join(modelsDir, m.file);
   if (fs.existsSync(dest)) return dest;
@@ -97,68 +105,255 @@ async function ensureModel(model, onPhase, onProgress) {
   return dest;
 }
 
-function transcriptDir(file) {
-  return path.join(path.dirname(file), `${path.basename(file, path.extname(file))} - Transcrição`);
+function baseName(file) {
+  return path.basename(file, path.extname(file));
 }
 
-async function load(file) {
+function transcriptDir(file) {
+  return path.join(path.dirname(file), `${baseName(file)} - Transcrição`);
+}
+
+function jsonPath(file, translated) {
+  return path.join(transcriptDir(file), translated ? 'transcricao-ingles.json' : 'transcricao.json');
+}
+
+async function load(file, translated = false) {
+  let r;
   try {
-    return JSON.parse(await fsp.readFile(path.join(transcriptDir(file), 'transcricao.json'), 'utf8'));
+    r = JSON.parse(await fsp.readFile(jsonPath(file, translated), 'utf8'));
   } catch {
     return null;
   }
+  // Transcrições da versão 1.1 não tinham métricas nem capítulos.
+  if (!r.metrics) {
+    r.metrics = script.metrics(r.segments, r.info.duration);
+    r.chapters = script.chapters(r.segments, r.info.duration);
+    r.chaptersText = script.chaptersText(r.chapters);
+  }
+  return r;
 }
 
-async function transcribe(file, { language = 'pt', model = 'small', onPhase = () => {}, onProgress, onStart } = {}) {
+// ---------- leitura do resultado do whisper ----------
+
+// Junta os tokens do whisper em palavras com tempo de início e fim.
+function wordsFromTokens(tokens) {
+  const words = [];
+  for (const tk of tokens || []) {
+    const text = tk.text || '';
+    if (/^\[_|^\[(BLANK|MUSIC|Música)/i.test(text) || /^<\|/.test(text)) continue;
+    const from = tk.offsets ? tk.offsets.from / 1000 : null;
+    const to = tk.offsets ? tk.offsets.to / 1000 : null;
+    if (from === null) continue;
+    if (!words.length || /^\s/.test(text)) {
+      if (!text.trim()) continue;
+      words.push({ w: text.trim(), start: from, end: to });
+    } else {
+      const last = words[words.length - 1];
+      last.w += text;
+      last.end = Math.max(last.end, to);
+    }
+  }
+  return words.filter((w) => w.w);
+}
+
+function cleanText(t) {
+  return String(t || '').replace(/\s+/g, ' ').trim();
+}
+
+function isNoise(text) {
+  return !text || /^[[(].*[\])]$/.test(text) || /^(♪|\*|\.)+$/.test(text);
+}
+
+function parseWhisper(raw) {
+  return (raw.transcription || [])
+    .map((s) => {
+      const text = cleanText(s.text);
+      const words = wordsFromTokens(s.tokens);
+      return { start: s.offsets.from / 1000, end: s.offsets.to / 1000, text, words };
+    })
+    .filter((s) => !isNoise(s.text));
+}
+
+// ---------- legenda publicada no YouTube ----------
+
+async function youtubeSubtitles(url, language, ytdlpArgs) {
+  const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'reflab-yt-'));
+  try {
+    const langs = language && language !== 'auto' ? `${language}.*,${language}` : 'all,-live_chat';
+    const p = start(tools.toolPath('yt-dlp'), [
+      ...ytdlpArgs, '--skip-download', '--no-playlist', '--write-subs', '--sub-langs', langs,
+      '--sub-format', 'json3', '-o', path.join(tmp, 'leg.%(ext)s'), '--', url,
+    ]);
+    await p.promise;
+    const file = (await fsp.readdir(tmp)).find((f) => f.endsWith('.json3'));
+    if (!file) return null;
+    const j = JSON.parse(await fsp.readFile(path.join(tmp, file), 'utf8'));
+    const segments = (j.events || [])
+      .filter((e) => e.segs && e.tStartMs !== undefined)
+      .map((e) => {
+        const text = cleanText(e.segs.map((s) => s.utf8 || '').join(''));
+        const start = e.tStartMs / 1000;
+        const end = (e.tStartMs + (e.dDurationMs || 0)) / 1000;
+        return { start, end, text };
+      })
+      .filter((s) => !isNoise(s.text));
+    for (const s of segments) s.words = captions.spreadWords(s);
+    return segments.length ? { segments, lang: file.split('.').slice(-2, -1)[0] } : null;
+  } finally {
+    await fsp.rm(tmp, { recursive: true, force: true });
+  }
+}
+
+// ---------- gravar resultado ----------
+
+async function writeOutputs(r) {
+  await fsp.mkdir(r.outDir, { recursive: true });
+  const name = baseName(r.file);
+  const suffix = r.translated ? ' - inglês' : '';
+  r.srt = path.join(r.outDir, `${name}${suffix}.srt`);
+  r.srtYoutube = path.join(r.outDir, `${name}${suffix} - para o YouTube.srt`);
+  r.srtReels = path.join(r.outDir, `${name}${suffix} - curta (Reels).srt`);
+  r.txt = path.join(r.outDir, `${name}${suffix} - texto.txt`);
+  await fsp.writeFile(r.srt, captions.segmentsSrt(r.segments), 'utf8');
+  await fsp.writeFile(r.srtYoutube, captions.youtubeSrt(r.segments), 'utf8');
+  await fsp.writeFile(r.srtReels, captions.reelsSrt(r.segments), 'utf8');
+  await fsp.writeFile(r.txt, r.segments.map((s) => s.text).join('\n'), 'utf8');
+  r.metrics = script.metrics(r.segments, r.info.duration);
+  r.chapters = script.chapters(r.segments, r.info.duration);
+  r.chaptersText = script.chaptersText(r.chapters);
+  if (r.chapters.length) {
+    await fsp.writeFile(path.join(r.outDir, `${name}${suffix} - capítulos.txt`), r.chaptersText, 'utf8');
+  }
+  await fsp.writeFile(jsonPath(r.file, r.translated), JSON.stringify(r, null, 2));
+  if (!r.translated) register(r);
+  return r;
+}
+
+function register(r) {
+  const list = index.get().filter((e) => e.file !== r.file);
+  list.unshift({ file: r.file, name: baseName(r.file), date: Date.now(), url: r.url || null });
+  index.set(list.slice(0, 3000));
+}
+
+// ---------- transcrever ----------
+
+async function transcribe(file, {
+  language = 'pt', model = 'turbo', prompt = '', translate = false, vad = true,
+  url = null, useYoutubeSubs = false, ytdlpArgs = [],
+  onPhase = () => {}, onProgress, onStart,
+} = {}) {
   const info = await media.probe(file);
   if (!info.hasAudio) throw new Error('O arquivo não tem áudio.');
-  const cli = await ensureWhisper(onPhase, onProgress);
-  const modelPath = await ensureModel(model, onPhase, onProgress);
-
-  onPhase('Preparando o áudio...');
   const outDir = transcriptDir(file);
-  await fsp.mkdir(outDir, { recursive: true });
-  const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'reflab-tr-'));
-  const wav = path.join(tmp, 'audio.wav');
-  await media.ffmpeg(['-i', file, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav],
-    { duration: info.duration, onProgress, onStart });
+  let segments = null;
+  let source = 'whisper';
 
-  onPhase('Transcrevendo...');
-  if (onProgress) onProgress(0);
-  const base = path.join(tmp, 'saida');
-  const threads = String(Math.max(2, Math.min(8, os.cpus().length)));
-  const p = start(cli, [
-    '-m', modelPath, '-f', wav, '-l', language || 'auto', '-t', threads,
-    '-osrt', '-oj', '-of', base, '-pp',
-  ], {
-    cwd: path.dirname(cli),
-    onLine: (line) => {
-      const m = line.match(/progress\s*=\s*(\d+)%/);
-      if (m && onProgress) onProgress(Number(m[1]) / 100);
-    },
-  });
-  if (onStart) onStart(p);
-  const r = await p.promise;
-  if (r.code !== 0 || !fs.existsSync(`${base}.json`)) {
-    await fsp.rm(tmp, { recursive: true, force: true });
-    throw new Error(`Falha na transcrição: ${r.stderr.trim().split(/\r?\n/).slice(-2).join(' ')}`);
+  if (url && useYoutubeSubs && !translate) {
+    onPhase('Procurando a legenda publicada pelo autor...');
+    const yt = await youtubeSubtitles(url, language, ytdlpArgs).catch(() => null);
+    if (yt) {
+      // Se o arquivo é só um trecho do vídeo, a legenda do YouTube não bate: usa o whisper.
+      const lastEnd = yt.segments[yt.segments.length - 1].end;
+      if (lastEnd > info.duration + 5) yt.segments = null;
+    }
+    if (yt && yt.segments) {
+      segments = yt.segments;
+      source = `legenda do YouTube (${yt.lang})`;
+    }
   }
 
-  const raw = JSON.parse(await fsp.readFile(`${base}.json`, 'utf8'));
-  const segments = (raw.transcription || [])
-    .map((s) => ({ start: s.offsets.from / 1000, end: s.offsets.to / 1000, text: String(s.text || '').trim() }))
-    .filter((s) => s.text && !/^\[.*\]$/.test(s.text));
+  if (!segments) {
+    const cli = await ensureWhisper(onPhase, onProgress);
+    const modelPath = await ensureModel(model, onPhase, onProgress);
+    onPhase('Preparando o áudio...');
+    const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'reflab-tr-'));
+    try {
+      const wav = path.join(tmp, 'audio.wav');
+      await media.ffmpeg(['-i', file, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav],
+        { duration: info.duration, onProgress, onStart });
+      onPhase(translate ? 'Transcrevendo e traduzindo para inglês...' : 'Transcrevendo...');
+      if (onProgress) onProgress(0);
+      const base = path.join(tmp, 'saida');
+      const threads = String(Math.max(2, Math.min(8, os.cpus().length)));
+      const args = ['-m', modelPath, '-f', wav, '-l', language || 'auto', '-t', threads, '-ojf', '-of', base, '-pp'];
+      if (prompt && prompt.trim()) args.push('--prompt', prompt.trim().slice(0, 600));
+      if (translate) args.push('-tr');
+      const vadModel = assetPath('models', 'ggml-silero-v5.1.2.bin');
+      if (vad && fs.existsSync(vadModel)) args.push('--vad', '-vm', vadModel, '-vsd', '300', '-vp', '200');
+      const p = start(cli, args, {
+        cwd: path.dirname(cli),
+        onLine: (line) => {
+          const m = line.match(/progress\s*=\s*(\d+)%/);
+          if (m && onProgress) onProgress(Number(m[1]) / 100);
+        },
+      });
+      if (onStart) onStart(p);
+      const r = await p.promise;
+      if (r.code !== 0 || !fs.existsSync(`${base}.json`)) {
+        throw new Error(`Falha na transcrição: ${r.stderr.trim().split(/\r?\n/).slice(-2).join(' ')}`);
+      }
+      segments = parseWhisper(JSON.parse(await fsp.readFile(`${base}.json`, 'utf8')));
+    } finally {
+      await fsp.rm(tmp, { recursive: true, force: true });
+    }
+  }
 
-  const name = path.basename(file, path.extname(file));
-  const srt = path.join(outDir, `${name}.srt`);
-  const txt = path.join(outDir, `${name} - texto.txt`);
-  await fsp.copyFile(`${base}.srt`, srt);
-  await fsp.writeFile(txt, segments.map((s) => s.text).join('\n'), 'utf8');
-  await fsp.rm(tmp, { recursive: true, force: true });
+  const result = {
+    file, url, language, model, source, translated: !!translate, prompt,
+    outDir, info, segments, createdAt: Date.now(),
+  };
+  return writeOutputs(result);
+}
 
-  const result = { file, language, model, outDir, srt, txt, segments, info, createdAt: Date.now() };
-  await fsp.writeFile(path.join(outDir, 'transcricao.json'), JSON.stringify(result, null, 2));
-  return result;
+// Salva correções feitas no texto (o tempo das palavras é redistribuído
+// nos trechos alterados).
+async function update(file, edits) {
+  const r = await load(file);
+  if (!r) throw new Error('Transcrição não encontrada.');
+  for (const e of edits) {
+    const seg = r.segments[e.index];
+    if (!seg) continue;
+    const text = cleanText(e.text);
+    if (text === seg.text) continue;
+    seg.text = text;
+    seg.edited = true;
+    seg.words = captions.spreadWords(seg);
+  }
+  r.segments = r.segments.filter((s) => s.text);
+  return writeOutputs(r);
+}
+
+// ---------- busca nas falas de todas as transcrições ----------
+
+const cache = new Map();
+function normalize(t) {
+  return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+async function searchAll(query) {
+  const q = normalize(query.trim());
+  if (q.length < 2) return [];
+  const results = [];
+  for (const entry of index.get()) {
+    const p = jsonPath(entry.file);
+    let st;
+    try { st = await fsp.stat(p); } catch { continue; }
+    let c = cache.get(p);
+    if (!c || c.mtime !== st.mtimeMs) {
+      try {
+        const r = JSON.parse(await fsp.readFile(p, 'utf8'));
+        c = { mtime: st.mtimeMs, segments: r.segments.map((s) => ({ start: s.start, text: s.text, n: normalize(s.text) })) };
+        cache.set(p, c);
+      } catch { continue; }
+    }
+    for (const s of c.segments) {
+      if (s.n.includes(q)) {
+        results.push({ file: entry.file, name: entry.name, start: s.start, text: s.text });
+        if (results.length >= 500) return results;
+      }
+    }
+  }
+  return results;
 }
 
 function modelsStatus() {
@@ -167,4 +362,6 @@ function modelsStatus() {
   }));
 }
 
-module.exports = { init, transcribe, load, modelsStatus, MODELS };
+module.exports = {
+  init, transcribe, load, update, searchAll, modelsStatus, MODELS, transcriptDir, flush: () => index && index.flush(),
+};

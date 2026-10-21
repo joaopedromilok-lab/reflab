@@ -143,10 +143,16 @@ async function analyze(file, { threshold = 0.3, minShot = 0.3, withBeats = true,
         onStart,
         onProgress: onProgress && ((p) => onProgress(0.75 + 0.25 * p)),
       });
-      const align = audio.cutsOnBeat(shots.slice(1).map((s) => s.start), beats.beats);
-      stats.bpm = beats.bpm;
-      stats.cutsOnBeat = align.onBeat;
-      stats.cutsOnBeatRatio = align.ratio;
+      if (beats.confidence < audio.MIN_BEAT_CONFIDENCE) {
+        // Sem batida marcada: não inventa BPM.
+        stats.noBeat = true;
+        beats = { bpm: 0, beats: [], confidence: beats.confidence };
+      } else {
+        const align = audio.cutsOnBeat(shots.slice(1).map((s) => s.start), beats.beats);
+        stats.bpm = beats.bpm;
+        stats.cutsOnBeat = align.onBeat;
+        stats.cutsOnBeatRatio = align.ratio;
+      }
     } catch {
       beats = null;
     }
@@ -529,5 +535,5 @@ async function framesEvery(file, seconds, { onProgress, onStart } = {}) {
 
 module.exports = {
   analyze, loadAnalysis, updateAnalysis, splitShots, frameAt, framesEvery, parseTime,
-  writeMarkersXml, writeMarkersEdl, clock,
+  writeMarkersXml, writeMarkersEdl, clock, buildXmeml,
 };

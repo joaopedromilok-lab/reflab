@@ -33,7 +33,15 @@ function init(dir, downloadsDir) {
     momentMax: 30,
     clipMode: 'precise',
     transcribeLanguage: 'pt',
-    transcribeModel: 'small',
+    transcribeModel: 'turbo',
+    transcribeVad: true,
+    transcribePrompt: '',
+    useYoutubeSubs: true,
+    transcribeAudioOnly: false,
+    afterTranscribe: false,
+    afterAnalyze: false,
+    silenceNoise: -35,
+    silenceMin: 0.5,
   };
   store = jsonStore(path.join(dir, 'ajustes.json'), {});
 }

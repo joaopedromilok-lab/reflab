@@ -29,6 +29,30 @@ jobs:
           codesign --force --sign - vendor/whisper/whisper-cli
           otool -L vendor/whisper/whisper-cli
           vendor/whisper/whisper-cli --help | head -3
+      - name: ffmpeg para o Mac (vai dentro do app)
+        run: |
+          baixar() {
+            nome="$1"; shift
+            for url in "$@"; do
+              for tentativa in 1 2 3 4; do
+                rm -rf tmp-ff && mkdir tmp-ff
+                if curl -fsSL --max-time 300 -o tmp-ff/p.zip "$url" && unzip -o -q tmp-ff/p.zip -d tmp-ff/x; then
+                  achado=$(find tmp-ff/x -type f -name "$nome" ! -path "*__MACOSX*" | head -1)
+                  if [ -n "$achado" ]; then cp "$achado" "vendor/ffmpeg/$nome"; return 0; fi
+                fi
+                sleep 15
+              done
+            done
+            return 1
+          }
+          baixar ffmpeg https://www.osxexperts.net/ffmpeg9arm.zip https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/ffmpeg.zip
+          baixar ffprobe https://www.osxexperts.net/ffprobe9arm.zip https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/ffprobe.zip
+          chmod +x vendor/ffmpeg/ffmpeg vendor/ffmpeg/ffprobe
+          xattr -cr vendor/ffmpeg || true
+          codesign --force --sign - vendor/ffmpeg/ffmpeg vendor/ffmpeg/ffprobe
+          vendor/ffmpeg/ffmpeg -hide_banner -version | head -1
+          vendor/ffmpeg/ffmpeg -hide_banner -filters | grep -E " ass " || (echo "ffmpeg sem filtro ass" && exit 1)
+          vendor/ffmpeg/ffmpeg -hide_banner -encoders | grep -E "libx264|hevc_videotoolbox|prores_ks"
       - run: npx electron-builder --mac --arm64 --publish never
       - name: Assinatura local (ad-hoc), DMG e ZIP
         run: |

@@ -10,6 +10,8 @@ const updater = require('./updater');
 const moments = require('./moments');
 const transcribe = require('./transcribe');
 const editors = require('./editors');
+const montage = require('./montage');
+const decupagem = require('./decupagem');
 
 let win = null;
 let lastUpdate = null;
@@ -118,6 +120,35 @@ function registerIpc() {
   ipcMain.handle('moments:load', (_e, file) => moments.load(file));
   ipcMain.handle('transcript:load', (_e, file) => transcribe.load(file));
   ipcMain.handle('transcript:models', () => transcribe.modelsStatus());
+  ipcMain.handle('transcript:loadTranslated', (_e, file) => transcribe.load(file, true));
+  ipcMain.handle('transcript:update', (_e, file, edits) => transcribe.update(file, edits));
+  ipcMain.handle('transcript:searchAll', (_e, q) => transcribe.searchAll(q));
+  ipcMain.handle('montage:exportXml', async (_e, file, ranges, title) => {
+    const t = await transcribe.load(file);
+    return montage.exportXml(file, ranges, { title, outDir: t ? t.outDir : undefined });
+  });
+  ipcMain.handle('compare:load', (_e, files) => decupagem.compare(files));
+  ipcMain.handle('clipboard:write', (_e, text) => clipboard.writeText(String(text || '')));
+  ipcMain.handle('dialog:folderOnly', async () => {
+    const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
+    return r.canceled ? null : r.filePaths[0];
+  });
+  ipcMain.handle('fs:listMedia', async (_e, dir) => {
+    const exts = /\.(mp4|mov|mkv|webm|m4v|avi|mxf|mts|m2ts|wav|mp3|m4a|aac|flac)$/i;
+    const out = [];
+    const walk = async (d, depth) => {
+      for (const ent of await fs.promises.readdir(d, { withFileTypes: true })) {
+        const p = path.join(d, ent.name);
+        if (ent.isDirectory()) {
+          if (depth < 2 && !/ - (Análise|Transcrição|Clipes|Momentos|Frames)/.test(ent.name) && ent.name !== 'Proxy') await walk(p, depth + 1);
+        } else if (exts.test(ent.name)) {
+          out.push({ file: p, transcribed: fs.existsSync(path.join(transcribe.transcriptDir(p), 'transcricao.json')) });
+        }
+      }
+    };
+    await walk(dir, 0);
+    return out;
+  });
   ipcMain.handle('transcript:exportHits', async (_e, file, query, hits) => {
     const t = await transcribe.load(file);
     if (!t) throw new Error('Transcrição não encontrada.');
@@ -164,7 +195,7 @@ app.whenReady().then(() => {
   tools.init(path.join(userData, 'bin'));
   settings.init(userData, app.getPath('downloads'));
   history.init(userData);
-  transcribe.init(path.join(userData, 'modelos'));
+  transcribe.init(path.join(userData, 'modelos'), userData);
   jobs.setConcurrency(settings.get().concurrency);
   registerIpc();
   createWindow();
@@ -179,6 +210,7 @@ app.on('before-quit', () => {
   jobs.cancelAll();
   settings.flush();
   history.flush();
+  transcribe.flush();
 });
 
 app.on('window-all-closed', () => app.quit());

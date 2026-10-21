@@ -20,7 +20,17 @@ Feito para uso pessoal e estudo.
   - paleta de cores de cada plano e do vídeo todo;
   - planos favoritos (★) que viram clipes.
 - **Momentos e clipes:** detecta os momentos mais intensos pelo áudio (torcida, narração, aplausos), exporta marcadores e recorta vários trechos de uma vez, inclusive na vertical 9:16.
-- **Transcrição local** (whisper.cpp): busca por palavra, marcadores dos trechos encontrados, clipes, `.srt` e texto.
+- **Transcrição e roteiro** (whisper.cpp, modelo large-v3-turbo, roda no próprio Mac):
+  - transcrever direto de um link, usando a legenda publicada pelo autor quando existir;
+  - ignora música e silêncio (detecção de voz), aceita nomes e palavras difíceis, tempo de cada palavra;
+  - player junto com o texto, correção do texto, busca com marcadores;
+  - montagem pelo texto: escolher frases e gerar timeline XML ou vídeo (vertical e com legenda estilo Reels);
+  - métricas do roteiro (palavras por minuto, tempo até a primeira fala, % com fala, pausas);
+  - capítulos para o YouTube, `.srt` pronto para subir, legenda curta e legenda em inglês;
+  - decupagem (roteiro AV: imagem | fala de cada plano);
+  - transcrever uma pasta inteira e buscar dentro das falas de todos os vídeos (Biblioteca).
+- **Comparar referências:** até 4 vídeos lado a lado (ritmo de edição, música e roteiro).
+- **Remover silêncios** de entrevistas e discursos (timeline XML e vídeo).
 - **Ferramentas:** converter arquivo local, gerar proxy ProRes, versão vertical, marcar batidas de uma música, extrair frames.
 - **Antes de baixar:** resolução, fps, codec e tamanho estimado; aviso de link copiado; senha de vídeo (Vimeo).
 - **Integração:** botão para abrir no Premiere/DaVinci e notificação do sistema quando uma tarefa termina.
@@ -100,8 +110,13 @@ src/main/      processo principal (Node/Electron)
   audio.js     detector de momentos e batidas (BPM)
   clips.js     recortes de vários trechos e versão vertical
   moments.js   resultado do detector e marcadores
-  transcribe.js transcrição com whisper.cpp
+  transcribe.js transcrição com whisper.cpp e legenda do YouTube
+  captions.js  legendas (.srt, YouTube, Reels) e legenda gravada (.ass)
+  script.js    métricas do roteiro e capítulos
+  montage.js   montagem pelo texto, vídeo final e remoção de silêncios
+  decupagem.js roteiro AV e comparação de referências
   editors.js   abrir no Premiere / DaVinci
 src/renderer/  interface
+assets/        fonte das legendas (Anton, OFL) e modelo de detecção de voz (Silero)
 .github/       workflow que gera o app de Mac e Windows
 ```

@@ -235,14 +235,19 @@ async function detectBeats(file, { duration = 0, onProgress, onStart } = {}) {
   const L = Math.min(norm.length, Math.round(fps * 90));
   let bestLag = minLag;
   let best = -Infinity;
+  let bestAc = 0;
+  let ac0 = 0;
+  for (let i = 0; i < L; i++) ac0 += norm[i] * norm[i];
   for (let lag = minLag; lag <= maxLag; lag++) {
     let ac = 0;
     for (let i = lag; i < L; i++) ac += norm[i] * norm[i - lag];
     const bpm = (60 * fps) / lag;
     const weight = Math.exp(-0.5 * (Math.log2(bpm / 120) / 0.9) ** 2);
-    if (ac * weight > best) { best = ac * weight; bestLag = lag; }
+    if (ac * weight > best) { best = ac * weight; bestLag = lag; bestAc = ac; }
   }
   const period = bestLag;
+  // Quanto a curva se repete no andamento encontrado (0 a 1): baixo = sem ritmo claro.
+  const confidence = ac0 > 0 ? bestAc / ac0 : 0;
 
   // Programação dinâmica para achar as batidas.
   const alpha = 100;
@@ -272,7 +277,7 @@ async function detectBeats(file, { duration = 0, onProgress, onStart } = {}) {
   const offset = N / RATE;
   const beats = frames.map((f) => Number(((f * HOP) / RATE + offset).toFixed(3)));
   const bpm = (60 * fps) / period;
-  return { bpm: Math.round(bpm * 10) / 10, beats };
+  return { bpm: Math.round(bpm * 10) / 10, beats, confidence: Math.round(confidence * 1000) / 1000 };
 }
 
 // Quantos cortes caem perto de uma batida (tolerância em segundos).
@@ -288,4 +293,7 @@ function cutsOnBeat(cuts, beats, tolerance = 0.07) {
   return { onBeat: on, total: cuts.length, ratio: on / cuts.length };
 }
 
-module.exports = { decodePcm, detectMoments, detectBeats, cutsOnBeat };
+// Abaixo disso o áudio não tem batida marcada (fala, trilha orquestral, ambiente).
+const MIN_BEAT_CONFIDENCE = 0.3;
+
+module.exports = { decodePcm, detectMoments, detectBeats, cutsOnBeat, MIN_BEAT_CONFIDENCE };

@@ -60,9 +60,10 @@ async function probe(file) {
 }
 
 // Roda o ffmpeg reportando o progresso (0..1) com base na duração.
-function ffmpeg(args, { duration = 0, onProgress, onStart, onStderrLine } = {}) {
+function ffmpeg(args, { duration = 0, onProgress, onStart, onStderrLine, cwd } = {}) {
   const full = ['-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats', ...args];
   const p = start(tools.toolPath('ffmpeg'), full, {
+    cwd,
     onLine: (line, src) => {
       if (src === 'out') {
         const m = line.match(/^out_time_(?:us|ms)=(\d+)/);

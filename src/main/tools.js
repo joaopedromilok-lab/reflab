@@ -17,6 +17,22 @@ let binDir = null;
 function init(dir) {
   binDir = dir;
   fs.mkdirSync(binDir, { recursive: true });
+  syncBundled();
+}
+
+// Se o app traz ffmpeg/ffprobe embutidos e a cópia instalada é diferente
+// (ex.: veio de outra fonte numa versão anterior), usa a embutida.
+function syncBundled() {
+  for (const name of ['ffmpeg', 'ffprobe']) {
+    const src = bundled(name);
+    if (!src) continue;
+    const dest = toolPath(name);
+    try {
+      if (fs.existsSync(dest) && fs.statSync(dest).size === fs.statSync(src).size) continue;
+      fs.copyFileSync(src, dest);
+      if (!IS_WIN) fs.chmodSync(dest, 0o755);
+    } catch { /* tenta de novo na próxima abertura */ }
+  }
 }
 
 function toolPath(name) {
@@ -31,10 +47,12 @@ function catalog() {
     return [
       { id: 'yt-dlp', label: 'yt-dlp', files: ['yt-dlp'], sources: [{ url: gh('yt-dlp/yt-dlp', 'yt-dlp_macos'), type: 'bin' }] },
       { id: 'ffmpeg', label: 'ffmpeg', files: ['ffmpeg'], sources: [
+        ...(ARCH === 'arm64' ? [{ url: 'https://www.osxexperts.net/ffmpeg9arm.zip', type: 'zip' }] : []),
         { url: riedl('release', 'ffmpeg.zip'), type: 'zip' },
         { url: riedl('snapshot', 'ffmpeg.zip'), type: 'zip' },
       ] },
       { id: 'ffprobe', label: 'ffprobe', files: ['ffprobe'], sources: [
+        ...(ARCH === 'arm64' ? [{ url: 'https://www.osxexperts.net/ffprobe9arm.zip', type: 'zip' }] : []),
         { url: riedl('release', 'ffprobe.zip'), type: 'zip' },
         { url: riedl('snapshot', 'ffprobe.zip'), type: 'zip' },
       ] },
@@ -93,6 +111,7 @@ async function findFile(dir, name) {
   for (const e of entries) {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) {
+      if (e.name === '__MACOSX') continue;
       const found = await findFile(p, name);
       if (found) return found;
     } else if (e.name === name) {
@@ -102,7 +121,22 @@ async function findFile(dir, name) {
   return null;
 }
 
+// No Mac, o ffmpeg e o ffprobe vêm dentro do app (copiados no build do GitHub),
+// para não depender de um site externo na primeira execução.
+function bundled(name) {
+  const p = process.resourcesPath && path.join(process.resourcesPath, 'ffmpeg', exe(name));
+  return p && fs.existsSync(p) ? p : null;
+}
+
 async function installTool(tool, onProgress) {
+  if (tool.files.every((f) => bundled(f))) {
+    for (const f of tool.files) {
+      await fsp.copyFile(bundled(f), toolPath(f));
+      if (!IS_WIN) await fsp.chmod(toolPath(f), 0o755);
+    }
+    onProgress(1, 0, 0, `${tool.label} pronto`);
+    return;
+  }
   let lastErr;
   for (const src of tool.sources) {
     const tmpDir = path.join(binDir, `.tmp-${tool.id}-${Date.now()}`);

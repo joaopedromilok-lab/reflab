@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: https: data:; media-src 'self' file:; style-src 'self' 'unsafe-inline'; script-src 'self'">
   <title>RefLab</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -15,6 +15,7 @@
         <button class="nav" data-view="study"><span>✂</span> Estudar edição</button>
         <button class="nav" data-view="moments"><span>⚡</span> Momentos e clipes</button>
         <button class="nav" data-view="transcript"><span>❝</span> Transcrição</button>
+        <button class="nav" data-view="compare"><span>⇆</span> Comparar</button>
         <button class="nav" data-view="tools"><span>⚙</span> Ferramentas</button>
         <button class="nav" data-view="history"><span>☰</span> Biblioteca</button>
         <button class="nav" data-view="settings"><span>✦</span> Ajustes</button>
@@ -112,6 +113,8 @@
             <label><input type="checkbox" id="playlist"> Se o link for de playlist, baixar a playlist inteira</label>
             <label><input type="checkbox" id="keepOriginal"> Manter também o arquivo original (antes da conversão)</label>
             <label><input type="checkbox" id="normalizeAudio"> Normalizar volume (só nos formatos de áudio)</label>
+            <label><input type="checkbox" id="afterTranscribe"> Transcrever depois de baixar</label>
+            <label><input type="checkbox" id="afterAnalyze"> Analisar os cortes depois de baixar</label>
           </div>
           <div class="field">
             <label>Senha do vídeo <span class="muted">(Vimeo e outros vídeos protegidos)</span></label>
@@ -209,11 +212,25 @@
       <!-- TRANSCRIÇÃO -->
       <section class="view" id="view-transcript">
         <header class="view-head">
-          <h1>Transcrição</h1>
-          <p>Transcreve a fala do vídeo no próprio computador. Depois é só buscar uma palavra para ir direto no trecho: votos, discursos, narração.</p>
+          <h1>Transcrição e roteiro</h1>
+          <p>Transcreve a fala no próprio computador, mede o ritmo do roteiro e deixa montar uma edição escolhendo as frases.</p>
         </header>
+
+        <div class="card">
+          <h3>Vídeo da internet</h3>
+          <div class="row">
+            <input id="trUrl" placeholder="cole o link (YouTube, Instagram, TikTok, Vimeo...)">
+            <button class="btn primary" id="trUrlRun">Baixar e transcrever</button>
+          </div>
+          <div class="checks" style="margin-top:10px">
+            <label><input type="checkbox" id="useYoutubeSubs"> Usar a legenda publicada pelo autor quando existir (instantâneo)</label>
+            <label><input type="checkbox" id="transcribeAudioOnly"> Baixar só o áudio (mais rápido, mas sem player de vídeo, decupagem e clipes)</label>
+          </div>
+        </div>
+
+        <h3 class="label">Ou um arquivo do computador</h3>
         <div class="drop" id="transcriptDrop">
-          <div><b>Arraste um vídeo ou áudio aqui</b> ou <button class="link" id="transcriptPick">escolha um arquivo</button></div>
+          <div><b>Arraste um vídeo ou áudio aqui</b> ou <button class="link" id="transcriptPick">escolha um arquivo</button> · <button class="link" id="trFolder">transcrever uma pasta inteira</button></div>
           <div class="muted" id="transcriptFile">Nenhum arquivo selecionado</div>
         </div>
         <div class="grid2">
@@ -232,11 +249,31 @@
             <p class="hint">O modelo é baixado só na primeira vez. "Preciso" é o melhor para português.</p>
           </div>
         </div>
+        <div class="field">
+          <label>Nomes e palavras difíceis <span class="muted">(opcional)</span></label>
+          <textarea id="transcribePrompt" rows="2" placeholder="Ex.: Ana Beatriz, Rafael, Igreja Matriz de Santa Rita, Neymar, Vini Jr., Nubank"></textarea>
+          <p class="hint">Ajuda a IA a escrever certo nomes de pessoas, marcas e lugares.</p>
+        </div>
+        <div class="field"><label class="check"><input type="checkbox" id="transcribeVad"> Ignorar música e silêncio (recomendado: evita texto inventado em trechos só com música)</label></div>
         <div class="actions"><button class="btn primary" id="transcriptRun" disabled>Transcrever</button></div>
         <div id="transcriptResult"></div>
       </section>
 
-      <!-- FERRAMENTAS -->
+      <!-- COMPARAR -->
+      <section class="view" id="view-compare">
+        <header class="view-head">
+          <h1>Comparar referências</h1>
+          <p>Coloque até 4 vídeos lado a lado: ritmo da edição, música e roteiro. Ótimo para entender o padrão de um tipo de anúncio.</p>
+        </header>
+        <div class="row">
+          <button class="btn primary" id="cmpAdd">Adicionar vídeo</button>
+          <button class="btn" id="cmpFill">Completar dados que faltam</button>
+          <button class="link" id="cmpClear">Limpar</button>
+        </div>
+        <div id="compareResult"></div>
+      </section>
+
+      <!-- FERRAMENTAS -->      <!-- FERRAMENTAS -->
       <section class="view" id="view-tools">
         <header class="view-head">
           <h1>Ferramentas</h1>
@@ -278,6 +315,26 @@
             </div>
           </div>
           <div class="card">
+            <h3>Remover silêncios</h3>
+            <p>Para entrevistas, discursos e vlogs: gera uma timeline sem as pausas (XML para Premiere/DaVinci) e, se quiser, o vídeo pronto.</p>
+            <div class="row" style="flex-wrap:wrap">
+              <select id="silenceNoise" style="width:auto">
+                <option value="-30">Silêncio abaixo de -30 dB (ambiente barulhento)</option>
+                <option value="-35">Silêncio abaixo de -35 dB (padrão)</option>
+                <option value="-40">Silêncio abaixo de -40 dB</option>
+                <option value="-45">Silêncio abaixo de -45 dB (estúdio)</option>
+              </select>
+              <select id="silenceMin" style="width:auto">
+                <option value="0.3">pausas a partir de 0,3 s</option>
+                <option value="0.5">pausas a partir de 0,5 s</option>
+                <option value="0.8">pausas a partir de 0,8 s</option>
+                <option value="1.2">pausas a partir de 1,2 s</option>
+              </select>
+            </div>
+            <label class="check-inline"><input type="checkbox" id="silenceRender"> Gerar também o vídeo pronto (.mp4)</label>
+            <button class="btn primary needs-file" id="silenceRun">Remover silêncios</button>
+          </div>
+          <div class="card">
             <h3>Marcar batidas da música</h3>
             <p>Para a música que você vai usar na edição: gera marcadores em cada batida (XML para Premiere/DaVinci e EDL para DaVinci) e mostra o BPM.</p>
             <button class="btn primary needs-file" id="beatsRun">Marcar batidas</button>
@@ -310,7 +367,13 @@
           </div>
           <button class="btn" id="historyClear">Limpar histórico</button>
         </header>
-        <input id="historySearch" placeholder="Buscar por título, canal, site, etiqueta ou anotação...">
+        <div class="row">
+          <input id="historySearch" placeholder="Buscar por título, canal, site, etiqueta ou anotação...">
+          <select id="historyMode" style="width:auto">
+            <option value="meta">Títulos e etiquetas</option>
+            <option value="speech">Dentro das falas</option>
+          </select>
+        </div>
         <div id="tagFilter" class="tags-filter"></div>
         <div id="historyList" class="history"></div>
       </section>

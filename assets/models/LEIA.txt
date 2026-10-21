@@ -1,0 +1,2 @@
+Silero VAD (MIT) convertido para ggml pelo projeto whisper.cpp:
+https://huggingface.co/ggml-org/whisper-vad

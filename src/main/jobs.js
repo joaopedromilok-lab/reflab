@@ -13,6 +13,9 @@ const clips = require('./clips');
 const audio = require('./audio');
 const moments = require('./moments');
 const transcribe = require('./transcribe');
+const montage = require('./montage');
+const captionsLib = require('./captions');
+const decupagem = require('./decupagem');
 
 const events = new EventEmitter();
 const jobs = new Map();
@@ -32,6 +35,9 @@ const KIND_LABEL = {
   vertical: 'Versão vertical',
   transcribe: 'Transcrição',
   beats: 'Marcar batidas',
+  montage: 'Gerar vídeo',
+  decupagem: 'Decupagem',
+  silence: 'Remover silêncios',
 };
 
 function snapshot(job) {
@@ -365,6 +371,17 @@ async function handleDownload(job, ctx) {
     });
     emit(job);
   }
+  // Tarefas encadeadas: transcrever e/ou analisar depois de baixar.
+  for (const [i, file] of job.files.entries()) {
+    if (!/\.(mp4|mov|mkv|webm|m4v|wav|mp3|m4a)$/i.test(file)) continue;
+    const item = downloaded[i] || {};
+    if (o.afterTranscribe) {
+      add('transcribe', { ...o.afterTranscribe, file, url: item.webpage_url || url, cookiesBrowser: o.cookiesBrowser });
+    }
+    if (o.afterAnalyze && !/\.(wav|mp3|m4a)$/i.test(file)) {
+      add('analyze', { ...o.afterAnalyze, file });
+    }
+  }
   return { files: job.files };
 }
 
@@ -518,12 +535,60 @@ const HANDLERS = {
   },
 
   async transcribe(job, ctx) {
-    const r = await transcribe.transcribe(job.params.file, {
-      language: job.params.language, model: job.params.model, ...ctx,
+    const o = job.params;
+    const r = await transcribe.transcribe(o.file, {
+      language: o.language, model: o.model, prompt: o.prompt, translate: o.translate, vad: o.vad !== false,
+      url: o.url, useYoutubeSubs: o.useYoutubeSubs, ytdlpArgs: ytdlpBaseArgs(o), ...ctx,
       onPhase: (phase) => patch(job, { phase, progress: 0 }),
     });
     job.files.push(r.srt);
-    patch(job, { phase: `${r.segments.length} trechos transcritos` });
+    const via = r.source === 'whisper' ? '' : ` (${r.source})`;
+    patch(job, { phase: `${r.segments.length} trechos transcritos${via}` });
+    return r;
+  },
+
+  async montage(job, ctx) {
+    const o = job.params;
+    let words = [];
+    if (o.withCaptions) {
+      const t = await transcribe.load(o.file);
+      if (!t) throw new Error('Transcreva o vídeo antes de gerar com legenda.');
+      words = captionsLib.allWords(t.segments);
+    }
+    patch(job, { phase: o.withCaptions ? 'Montando o vídeo com legenda...' : 'Montando o vídeo...' });
+    const r = await montage.render(o.file, o.ranges, {
+      vertical: o.vertical, withCaptions: o.withCaptions, words, title: o.outputTitle, outDir: o.outDir, ...ctx,
+    });
+    job.files.push(r.output);
+    return r;
+  },
+
+  async decupagem(job, ctx) {
+    const o = job.params;
+    if (!(await study.loadAnalysis(o.file))) {
+      patch(job, { phase: 'Analisando os cortes (1/3)...' });
+      await study.analyze(o.file, { threshold: o.threshold, minShot: o.minShot, ...ctx });
+    }
+    if (!(await transcribe.load(o.file))) {
+      await transcribe.transcribe(o.file, {
+        language: o.language, model: o.model, prompt: o.prompt, vad: o.vad !== false, ...ctx,
+        onPhase: (phase) => patch(job, { phase: `${phase} (2/3)`, progress: 0 }),
+      });
+    }
+    patch(job, { phase: 'Montando a decupagem (3/3)...' });
+    const r = await decupagem.build(o.file);
+    job.files.push(r.html);
+    return r;
+  },
+
+  async silence(job, ctx) {
+    const o = job.params;
+    const r = await montage.removeSilence(o.file, {
+      noise: o.noise, minSilence: o.minSilence, renderVideo: o.renderVideo, ...ctx,
+      onPhase: (phase) => patch(job, { phase, progress: 0 }),
+    });
+    job.files.push(r.output || r.xml);
+    patch(job, { phase: `${Math.round(r.removed)}s de silêncio removidos (${r.cuts} trechos)` });
     return r;
   },
 
@@ -532,7 +597,9 @@ const HANDLERS = {
     const info = await media.probe(job.params.file);
     if (!info.hasAudio) throw new Error('O arquivo não tem áudio.');
     const b = await audio.detectBeats(job.params.file, { duration: info.duration, ...ctx });
-    if (!b.beats.length) throw new Error('Não encontrei batidas (o áudio é muito curto ou não tem ritmo marcado).');
+    if (!b.beats.length || b.confidence < audio.MIN_BEAT_CONFIDENCE) {
+      throw new Error('Não encontrei uma batida marcada nesse áudio (pode ser fala, trilha orquestral ou som ambiente).');
+    }
     const name = path.basename(job.params.file, path.extname(job.params.file));
     const marks = b.beats.map((t, i) => ({ t, name: `Batida ${i + 1}` }));
     const dir = path.dirname(job.params.file);
