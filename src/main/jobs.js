@@ -382,6 +382,9 @@ async function handleDownload(job, ctx) {
     if (o.afterAnalyze && !/\.(wav|mp3|m4a)$/i.test(file)) {
       add('analyze', { ...o.afterAnalyze, file });
     }
+    if (o.afterMoments) {
+      add('moments', { ...o.afterMoments, file, title: path.basename(file) });
+    }
   }
   return { files: job.files };
 }

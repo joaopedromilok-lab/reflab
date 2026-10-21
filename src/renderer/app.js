@@ -769,7 +769,7 @@ function renderHistory() {
   list.replaceChildren(...items.slice(0, 300).map((h) => {
     const sub = el('div', { class: 'sub' },
       [h.uploader, h.site, new Date(h.date).toLocaleString('pt-BR'), (PRESETS.find((p) => p.id === h.preset) || {}).name].filter(Boolean).join(' · '));
-    const row = el('div', { class: 'hitem' },
+    const row = el('div', { class: 'hitem', 'data-file': h.file },
       h.thumbnail ? el('img', { src: h.thumbnail, alt: '', loading: 'lazy' }) : el('div', { class: 'ph' }),
       el('div', { class: 'meta' },
         el('div', { class: 'title', title: h.title }, h.title || basename(h.file)),

@@ -1,0 +1,157 @@
+/* Layouts em teste: A (arrumação) e B (centrado no vídeo).
+   O layout atual não usa nada daqui (exceto o que fica escondido por padrão). */
+
+/* ---------- escondido no layout atual ---------- */
+.nav-home-group, #view-home, #view-video, .video-bar, .activity-toggle, .activity-close, .dl-summary, .info-tip { display: none; }
+body:not(.compact) details.advanced > summary { display: none; }
+details.advanced { margin-top: 16px; }
+
+/* ---------- A e B: base enxuta ---------- */
+
+/* Atividades viram uma gaveta à direita */
+body.compact .app { grid-template-columns: 210px minmax(0, 1fr); }
+body.compact .activity {
+  position: fixed; top: 36px; right: 0; bottom: 0; width: 360px; z-index: 30;
+  transform: translateX(105%); transition: transform .22s ease;
+  box-shadow: -18px 0 40px rgba(0, 0, 0, .35); background: var(--panel);
+}
+body.platform-linux.compact .activity { top: 0; }
+body.compact.activity-open .activity { transform: none; }
+body.compact .activity-close { display: inline; margin-left: 10px; }
+body.compact .activity-toggle {
+  display: flex; align-items: center; gap: 8px; margin: auto 4px 6px; padding: 9px 10px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text);
+  cursor: pointer; font-size: 13px; -webkit-app-region: no-drag; text-align: left;
+}
+body.compact .activity-toggle:hover { border-color: var(--accent); }
+.activity-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.activity-dot.busy { background: var(--accent); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); animation: pulse 1.4s infinite; }
+@keyframes pulse { 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+body.compact .sidebar-foot { margin-top: 0; }
+
+/* Logo aparece uma vez só (fica a barra de cima) */
+body.compact:not(.platform-linux) .sidebar .brand { display: none; }
+body.compact:not(.platform-linux) .sidebar { padding-top: 18px; }
+
+/* Explicações viram ⓘ */
+body.compact .static-hint { display: none !important; }
+body.compact .info-tip {
+  display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 4px;
+  border-radius: 50%; border: 1px solid var(--line); color: var(--muted); font: 600 10px/1 Georgia, serif;
+  font-style: italic; cursor: help; vertical-align: 1px; text-transform: none; letter-spacing: 0;
+}
+body.compact .info-tip:hover { color: var(--text); border-color: var(--accent); }
+
+/* Ajustes avançados recolhidos */
+body.compact details.advanced { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; background: var(--panel); }
+body.compact details.advanced > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+body.compact details.advanced[open] > summary { margin-bottom: 12px; }
+
+/* Download: opções viram um resumo */
+body.compact .dl-summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 14px 0 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
+}
+body.compact .dl-summary-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+body.compact:not(.dl-expanded) .dl-options { display: none; }
+body.compact #view-download .download-step:first-of-type .step-heading { display: none; }
+
+/* Um botão de destaque por tela */
+body.compact #view-tools .btn.primary,
+body.compact #clipsRun { background: var(--panel-2); border-color: var(--line); color: var(--text); font-weight: 500; box-shadow: none; }
+body.compact #view-tools .btn.primary:hover, body.compact #clipsRun:hover { border-color: var(--accent); }
+body.compact #view-tools .card > h3 { margin-bottom: 10px; }
+body.compact #view-tools .cards { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+
+/* Cabeçalhos mais curtos */
+body.compact .view-head { margin-bottom: 14px; }
+body.compact .view-head p { font-size: 13px; }
+
+/* ---------- B: centrado no vídeo ---------- */
+body.layout-b .nav-home-group { display: block; }
+body.layout-b .nav[data-view="download"],
+body.layout-b .nav[data-view="study"],
+body.layout-b .nav[data-view="moments"],
+body.layout-b .nav[data-view="transcript"],
+body.layout-b .nav[data-view="tools"] { display: none; }
+body.layout-b .nav-group-label { display: none; }
+body.layout-b .nav-group { margin-bottom: 2px; }
+body.layout-b #view-home.active, body.layout-b #view-video.active { display: block; }
+
+/* Início */
+.home-box {
+  display: flex; flex-direction: column; gap: 12px; padding: 22px; border-radius: 16px;
+  border: 1.5px dashed color-mix(in srgb, var(--line) 80%, var(--accent) 20%); background: var(--panel);
+}
+.home-box.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+.home-box input { font-size: 16px; padding: 14px 16px; border-radius: 12px; }
+.home-or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; }
+.intents { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 16px; }
+.intent {
+  display: flex; flex-direction: column; gap: 4px; padding: 14px; text-align: left; cursor: pointer;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+}
+.intent span { color: var(--muted); font-size: 12px; }
+.intent:hover { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
+.intent.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel)); }
+.home-actions { display: flex; align-items: center; gap: 16px; margin-top: 16px; }
+.home-recent-head { display: flex; align-items: baseline; justify-content: space-between; margin-top: 30px; }
+.home-recent-head .label { margin-top: 0; }
+.recent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 10px; }
+.recent {
+  display: flex; flex-direction: column; gap: 4px; padding: 0 0 10px; text-align: left; cursor: pointer; overflow: hidden;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+}
+.recent img, .recent .ph { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #222; display: block; }
+.recent b { padding: 4px 10px 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent span { padding: 0 10px; font-size: 12px; }
+.recent:hover { border-color: var(--accent); }
+
+/* Barra do vídeo (topo das abas do vídeo) */
+body.video-mode .video-bar {
+  display: block; position: sticky; top: -30px; z-index: 5; margin: -30px calc(-1 * clamp(22px, 3vw, 42px)) 18px;
+  padding: 14px clamp(22px, 3vw, 42px) 0; background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(16px); border-bottom: 1px solid var(--line);
+}
+.vb-top { display: flex; align-items: center; gap: 12px; }
+.vb-top img, .vb-ph { width: 96px; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; background: #222; flex: none; }
+.vb-title { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.vb-title b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vb-title span { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.vb-actions { display: flex; gap: 6px; }
+.vb-back { white-space: nowrap; font-size: 13px; }
+.vb-tabs { display: flex; gap: 2px; margin-top: 12px; }
+.vb-tab { background: none; border: 0; padding: 9px 14px; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; font-size: 14px; }
+.vb-tab:hover { color: var(--text); }
+.vb-tab.on { color: var(--text); border-bottom-color: var(--accent); }
+/* Dentro da página do vídeo o arquivo já está escolhido */
+body.video-mode .view .drop,
+body.video-mode #view-transcript > .card:first-of-type,
+body.video-mode #view-transcript > h3.label,
+body.video-mode .view > .view-head { display: none; }
+
+/* Resumo do vídeo */
+.vcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.vcard { display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); }
+.vcard p { color: var(--muted); font-size: 13px; flex: 1; }
+.vcard-head { display: flex; align-items: center; gap: 8px; }
+.vcard-head h3 { margin: 0; font-size: 15px; }
+.vcard-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); flex: none; }
+.vcard.done .vcard-dot { background: var(--ok); }
+.vcard.done p { color: var(--text); }
+
+@media (max-width: 1180px) {
+  .intents { grid-template-columns: repeat(2, 1fr); }
+  body.compact .app { grid-template-columns: 190px minmax(0, 1fr); }
+}
+
+body.compact #view-tools .card select, body.compact #view-tools .card input { min-width: 0; max-width: 100%; }
+body.compact #view-tools .card .row { flex-wrap: wrap; }
+
+/* Resultado em primeiro plano: o botão de rodar de novo vira secundário */
+body.compact .view.has-result #studyRun,
+body.compact .view.has-result #momentsRun,
+body.compact .view.has-result #transcriptRun { background: var(--panel-2); border-color: var(--line); color: var(--text); font-weight: 500; box-shadow: none; }
+body.compact .tr-options .actions { margin-top: 12px; }
+body.compact .tr-options .grid2 { margin-top: 0; }
+body:not(.compact) .tr-options > summary { display: none; }

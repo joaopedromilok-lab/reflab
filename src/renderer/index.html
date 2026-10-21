@@ -5,6 +5,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: https: data:; media-src 'self' file:; style-src 'self' 'unsafe-inline'; script-src 'self'">
   <title>RefLab</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="layouts.css">
 </head>
 <body>
   <header class="window-titlebar" aria-label="Barra do RefLab">
@@ -15,6 +16,9 @@
     <aside class="sidebar">
       <div class="brand"><span class="logo" aria-hidden="true">R</span><span>RefLab</span></div>
       <nav>
+        <div class="nav-group nav-home-group">
+          <button class="nav" data-view="home"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg> Início</button>
+        </div>
         <div class="nav-group">
           <div class="nav-group-label">REFERÊNCIAS</div>
           <button class="nav active" data-view="download" aria-current="page"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg> Baixar</button>
@@ -38,10 +42,40 @@
         <span id="updateBoxVersion"></span>
         <button class="btn primary small" id="updateBoxBtn">Atualizar agora</button>
       </div>
+      <button class="activity-toggle" id="activityToggle" type="button">
+        <span class="activity-dot" id="activityDot"></span>
+        <span id="activityToggleText">Atividades</span>
+      </button>
       <div class="sidebar-foot" id="toolsBadge">Verificando ferramentas...</div>
     </aside>
 
     <main class="content">
+      <div class="video-bar" id="videoBar"></div>
+
+      <!-- INÍCIO (layout B) -->
+      <section class="view" id="view-home">
+        <header class="view-head">
+          <h1>O que vamos fazer?</h1>
+          <p>Cole um link ou traga um vídeo do computador. Tudo sobre ele fica numa página só.</p>
+        </header>
+        <div class="home-box" id="homeDrop">
+          <input id="homeInput" placeholder="Cole o link de um vídeo (YouTube, Instagram, TikTok, Vimeo...)">
+          <div class="home-or"><span>ou</span><button class="btn" id="homePick" type="button">Escolher um vídeo do computador</button></div>
+        </div>
+        <div class="intents" id="homeIntents"></div>
+        <div class="actions home-actions">
+          <button class="btn primary big" id="homeGo" type="button">Começar</button>
+          <span class="muted small-text" id="homeSummary"></span>
+        </div>
+        <div class="home-recent-head"><h3 class="label">Recentes</h3><button class="link" id="homeAll" type="button">ver biblioteca</button></div>
+        <div class="recent-grid" id="homeRecent"></div>
+      </section>
+
+      <!-- PÁGINA DO VÍDEO (layout B) -->
+      <section class="view" id="view-video">
+        <div id="videoSummary"></div>
+      </section>
+
       <!-- BAIXAR -->
       <section class="view active" id="view-download">
         <header class="view-head">
@@ -73,7 +107,9 @@
           <div id="urlInfo"></div>
         </section>
 
-        <section class="download-step">
+        <div class="dl-summary" id="dlSummary"></div>
+
+        <section class="download-step dl-options">
           <div class="step-heading">
             <span class="step-index">02</span>
             <div><h2>Escolha o formato</h2><p>Selecione um preset e ajuste a qualidade ou os trechos.</p></div>
@@ -102,7 +138,7 @@
           </div>
         </section>
 
-        <section class="download-step">
+        <section class="download-step dl-options">
           <div class="step-heading">
             <span class="step-index">03</span>
             <div><h2>Escolha onde salvar</h2><p>Defina a pasta e como organizar os arquivos.</p></div>
@@ -440,6 +476,17 @@
             <option value="light">Claro</option>
           </select>
         </div>
+        <div class="card appearance-card">
+          <div>
+            <b>Layout (teste)</b>
+            <p class="hint">Experimente organizações diferentes. As funções são as mesmas.</p>
+          </div>
+          <select id="layoutMode" aria-label="Layout">
+            <option value="classic">Atual</option>
+            <option value="a">A · Arrumação</option>
+            <option value="b">B · Centrado no vídeo</option>
+          </select>
+        </div>
         <div class="grid2">
           <div class="field">
             <label>Tarefas ao mesmo tempo</label>
@@ -499,6 +546,7 @@
       <div class="activity-head">
         <div class="activity-title"><h2>Atividades</h2><span class="activity-count" id="activityCount">0 ativas</span></div>
         <button class="link" id="clearFinished">Limpar concluídas</button>
+        <button class="link activity-close" id="activityClose" type="button">Fechar</button>
       </div>
       <div id="jobList" class="jobs"><p class="empty">Nada por aqui ainda.</p></div>
     </aside>
@@ -516,5 +564,6 @@
 
   <div class="toast hidden" id="toast"></div>
   <script src="app.js"></script>
+  <script src="layouts.js"></script>
 </body>
 </html>
