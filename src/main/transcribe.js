@@ -21,6 +21,7 @@ const MODELS = {
   base: { file: 'ggml-base.bin', label: 'Rápido (150 MB)' },
   small: { file: 'ggml-small.bin', label: 'Equilibrado (490 MB)' },
   turbo: { file: 'ggml-large-v3-turbo-q5_0.bin', label: 'Preciso (575 MB)' },
+  large: { file: 'ggml-large-v3-q5_0.bin', label: 'Máxima qualidade (1,1 GB, mais lento)' },
 };
 const MODEL_URL = (f) => `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${f}`;
 
@@ -237,6 +238,45 @@ function register(r) {
 
 // ---------- transcrever ----------
 
+// Roda o whisper num arquivo de áudio ou vídeo e devolve os trechos.
+async function runWhisper(input, duration, {
+  language = 'pt', model = 'turbo', prompt = '', translate = false, vad = true, onPhase = () => {}, onProgress, onStart,
+} = {}) {
+  const cli = await ensureWhisper(onPhase, onProgress);
+  const modelPath = await ensureModel(model, onPhase, onProgress);
+  onPhase('Preparando o áudio...');
+  const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'reflab-tr-'));
+  try {
+    const wav = path.join(tmp, 'audio.wav');
+    await media.ffmpeg(['-i', input, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav],
+      { duration, onProgress, onStart });
+    onPhase(translate ? 'Transcrevendo e traduzindo para inglês...' : 'Transcrevendo...');
+    if (onProgress) onProgress(0);
+    const base = path.join(tmp, 'saida');
+    const threads = String(Math.max(2, Math.min(8, os.cpus().length)));
+    const args = ['-m', modelPath, '-f', wav, '-l', language || 'auto', '-t', threads, '-ojf', '-of', base, '-pp'];
+    if (prompt && prompt.trim()) args.push('--prompt', prompt.trim().slice(0, 600));
+    if (translate) args.push('-tr');
+    const vadModel = assetPath('models', 'ggml-silero-v5.1.2.bin');
+    if (vad && fs.existsSync(vadModel)) args.push('--vad', '-vm', vadModel, '-vsd', '300', '-vp', '200');
+    const p = start(cli, args, {
+      cwd: path.dirname(cli),
+      onLine: (line) => {
+        const m = line.match(/progress\s*=\s*(\d+)%/);
+        if (m && onProgress) onProgress(Number(m[1]) / 100);
+      },
+    });
+    if (onStart) onStart(p);
+    const r = await p.promise;
+    if (r.code !== 0 || !fs.existsSync(`${base}.json`)) {
+      throw new Error(`Falha na transcrição: ${r.stderr.trim().split(/\r?\n/).slice(-2).join(' ')}`);
+    }
+    return parseWhisper(JSON.parse(await fsp.readFile(`${base}.json`, 'utf8')));
+  } finally {
+    await fsp.rm(tmp, { recursive: true, force: true });
+  }
+}
+
 async function transcribe(file, {
   language = 'pt', model = 'turbo', prompt = '', translate = false, vad = true,
   url = null, useYoutubeSubs = false, ytdlpArgs = [],
@@ -263,44 +303,80 @@ async function transcribe(file, {
   }
 
   if (!segments) {
-    const cli = await ensureWhisper(onPhase, onProgress);
-    const modelPath = await ensureModel(model, onPhase, onProgress);
-    onPhase('Preparando o áudio...');
-    const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'reflab-tr-'));
-    try {
-      const wav = path.join(tmp, 'audio.wav');
-      await media.ffmpeg(['-i', file, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav],
-        { duration: info.duration, onProgress, onStart });
-      onPhase(translate ? 'Transcrevendo e traduzindo para inglês...' : 'Transcrevendo...');
-      if (onProgress) onProgress(0);
-      const base = path.join(tmp, 'saida');
-      const threads = String(Math.max(2, Math.min(8, os.cpus().length)));
-      const args = ['-m', modelPath, '-f', wav, '-l', language || 'auto', '-t', threads, '-ojf', '-of', base, '-pp'];
-      if (prompt && prompt.trim()) args.push('--prompt', prompt.trim().slice(0, 600));
-      if (translate) args.push('-tr');
-      const vadModel = assetPath('models', 'ggml-silero-v5.1.2.bin');
-      if (vad && fs.existsSync(vadModel)) args.push('--vad', '-vm', vadModel, '-vsd', '300', '-vp', '200');
-      const p = start(cli, args, {
-        cwd: path.dirname(cli),
-        onLine: (line) => {
-          const m = line.match(/progress\s*=\s*(\d+)%/);
-          if (m && onProgress) onProgress(Number(m[1]) / 100);
-        },
-      });
-      if (onStart) onStart(p);
-      const r = await p.promise;
-      if (r.code !== 0 || !fs.existsSync(`${base}.json`)) {
-        throw new Error(`Falha na transcrição: ${r.stderr.trim().split(/\r?\n/).slice(-2).join(' ')}`);
-      }
-      segments = parseWhisper(JSON.parse(await fsp.readFile(`${base}.json`, 'utf8')));
-    } finally {
-      await fsp.rm(tmp, { recursive: true, force: true });
-    }
+    segments = await runWhisper(file, info.duration, { language, model, prompt, translate, vad, onPhase, onProgress, onStart });
   }
 
   const result = {
     file, url, language, model, source, translated: !!translate, prompt,
     outDir, info, segments, createdAt: Date.now(),
+  };
+  return writeOutputs(result);
+}
+
+function safeName(s) {
+  return String(s || 'video').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120) || 'video';
+}
+
+// Só a transcrição de um link, sem guardar o vídeo. Usa a legenda do autor
+// quando existe (nada é baixado); senão baixa só o áudio numa pasta
+// temporária, transcreve e apaga.
+// O "arquivo" da transcrição é um atalho .url para o vídeo original.
+async function transcribeLink(url, linkInfo, {
+  baseDir, language = 'pt', model = 'turbo', prompt = '', vad = true, useYoutubeSubs = true, ytdlpArgs = [],
+  onPhase = () => {}, onProgress, onStart,
+} = {}) {
+  const dir = path.join(baseDir, 'Transcrições');
+  await fsp.mkdir(dir, { recursive: true });
+  const file = path.join(dir, `${safeName(linkInfo.title)}.url`);
+  await fsp.writeFile(file, `[InternetShortcut]\r\nURL=${url}\r\n`, 'utf8');
+  const info = {
+    duration: linkInfo.duration || 0, hasAudio: true, hasVideo: false, fps: 0, width: 0, height: 0, linkOnly: true,
+  };
+  let segments = null;
+  let source = 'whisper';
+
+  if (useYoutubeSubs) {
+    onPhase('Procurando a legenda publicada pelo autor...');
+    const yt = await youtubeSubtitles(url, language, ytdlpArgs).catch(() => null);
+    if (yt) {
+      segments = yt.segments;
+      source = `legenda do YouTube (${yt.lang})`;
+    }
+  }
+
+  if (!segments) {
+    onPhase('Baixando só o áudio (temporário)...');
+    const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'reflab-link-'));
+    try {
+      const p = start(tools.toolPath('yt-dlp'), [
+        ...ytdlpArgs, '--no-playlist', '-f', 'ba/b', '--newline',
+        '--progress-template', 'download:RLP|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s',
+        '-o', path.join(tmp, 'audio.%(ext)s'), '--', url,
+      ], {
+        onLine: (line) => {
+          if (!line.startsWith('RLP|') || !onProgress) return;
+          const [, d, t, te] = line.split('|').map(Number);
+          const total = t || te;
+          if (total) onProgress(Math.min(1, d / total));
+        },
+      });
+      if (onStart) onStart(p);
+      const r = await p.promise;
+      const audio = (await fsp.readdir(tmp)).find((f) => f.startsWith('audio.'));
+      if (r.code !== 0 || !audio) {
+        throw new Error(`Não foi possível baixar o áudio: ${r.stderr.trim().split(/\r?\n/).filter((l) => /ERROR/.test(l)).pop() || ''}`);
+      }
+      segments = await runWhisper(path.join(tmp, audio), info.duration, { language, model, prompt, vad, onPhase, onProgress, onStart });
+    } finally {
+      await fsp.rm(tmp, { recursive: true, force: true });
+    }
+  }
+  if (!info.duration && segments.length) info.duration = segments[segments.length - 1].end;
+
+  const result = {
+    file, url, language, model, source, translated: false, prompt, linkOnly: true,
+    title: linkInfo.title, uploader: linkInfo.uploader, thumbnail: linkInfo.thumbnail,
+    outDir: transcriptDir(file), info, segments, createdAt: Date.now(),
   };
   return writeOutputs(result);
 }
@@ -363,5 +439,5 @@ function modelsStatus() {
 }
 
 module.exports = {
-  init, transcribe, load, update, searchAll, modelsStatus, MODELS, transcriptDir, flush: () => index && index.flush(),
+  init, transcribe, transcribeLink, load, update, searchAll, modelsStatus, MODELS, transcriptDir, flush: () => index && index.flush(),
 };

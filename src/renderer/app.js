@@ -209,9 +209,21 @@ async function initSettings() {
   bindField('clipMode', 'clipMode');
   bindField('transcribeLanguage', 'transcribeLanguage');
   bindField('transcribePrompt', 'transcribePrompt');
-  for (const k of ['transcribeVad', 'useYoutubeSubs', 'transcribeAudioOnly', 'afterTranscribe', 'afterAnalyze']) {
+  for (const k of ['transcribeVad', 'useYoutubeSubs', 'afterTranscribe', 'afterAnalyze']) {
     bindField(k, k, { type: 'checked' });
   }
+  bindField('transcribeUrlMode', 'transcribeUrlMode');
+  const modeHint = () => {
+    const hints = {
+      text: 'Nada fica salvo além do texto. Se o autor publicou legenda, nada é baixado; senão o áudio é baixado só para transcrever e apagado em seguida. Clicar num tempo abre o vídeo no navegador naquele minuto.',
+      video: 'Guarda o vídeo em H.264 na sua pasta de downloads. Libera player, decupagem, clipes e montagem.',
+      audio: 'Guarda só o áudio em MP3 (cerca de 2,4 MB por minuto). Libera o player de áudio e a timeline XML.',
+    };
+    $('#trUrlModeHint').textContent = hints[$('#transcribeUrlMode').value] || '';
+    $('#trUrlRun').textContent = $('#transcribeUrlMode').value === 'text' ? 'Transcrever o link' : 'Baixar e transcrever';
+  };
+  $('#transcribeUrlMode').addEventListener('change', modeHint);
+  modeHint();
   $('#silenceNoise').value = String(state.settings.silenceNoise);
   $('#silenceMin').value = String(state.settings.silenceMin);
   const sens = $('#momentSensitivity');
@@ -374,7 +386,7 @@ function jobCard(job) {
       btns.push(el('button', { class: 'btn small', onclick: () => { showView('study'); renderAnalysis(job.result); } }, 'Ver análise'));
     } else if (job.kind === 'moments') {
       btns.push(el('button', { class: 'btn small', onclick: () => { showView('moments'); renderMoments(job.result); } }, 'Ver momentos'));
-    } else if (job.kind === 'transcribe' && !job.params.translate) {
+    } else if ((job.kind === 'transcribe' && !job.params.translate) || job.kind === 'linkTranscript') {
       btns.push(el('button', { class: 'btn small', onclick: () => { showView('transcript'); renderTranscript(job.result); } }, 'Ver transcrição'));
     } else if (job.kind === 'decupagem') {
       btns.push(el('button', { class: 'btn small', onclick: () => api.shell.open(job.result.html) }, 'Abrir decupagem'));
@@ -446,6 +458,10 @@ api.jobs.onUpdate((job) => {
         toast('Transcrição concluída.');
       }
       loadModels();
+    } else if (job.kind === 'linkTranscript') {
+      showView('transcript');
+      renderTranscript(job.result);
+      toast('Transcrição do link pronta.');
     } else if (job.kind === 'decupagem') {
       toast('Decupagem pronta.');
       api.shell.open(job.result.html);
@@ -1049,9 +1065,19 @@ $('#trUrlRun').addEventListener('click', async () => {
   if (!/^https?:\/\//i.test(url)) { toast('Cole um link começando com http.', true); return; }
   if (!(await ensureTools())) return;
   const s = state.settings;
+  const mode = $('#transcribeUrlMode').value;
+  if (mode === 'text') {
+    await api.jobs.add('linkTranscript', {
+      url, title: url, outputDir: s.outputDir, cookiesBrowser: s.cookiesBrowser,
+      ...transcribeOptions(), useYoutubeSubs: s.useYoutubeSubs,
+    });
+    $('#trUrl').value = '';
+    toast('Transcrevendo o link... acompanhe em Atividades.');
+    return;
+  }
   await api.jobs.add('download', {
     url,
-    preset: s.transcribeAudioOnly ? 'wav' : 'h264',
+    preset: mode === 'audio' ? 'mp3' : 'h264',
     maxHeight: 1080,
     outputDir: s.outputDir,
     organize: s.organize,
@@ -1124,7 +1150,16 @@ function renderTranscript(r) {
     $('#transcriptRun').disabled = false;
   }
   const isVideo = !!(r.info && r.info.hasVideo);
-  const player = el(isVideo ? 'video' : 'audio', { class: isVideo ? 'player' : 'player audio', controls: true, preload: 'metadata', src: fileUrl(r.file) });
+  const linkOnly = !!r.linkOnly;
+  const player = linkOnly
+    ? el('div', { class: 'link-card' },
+      r.thumbnail ? el('img', { src: r.thumbnail, alt: '' }) : null,
+      el('div', {},
+        el('b', {}, r.title || basename(r.file)),
+        el('div', { class: 'muted' }, [r.uploader, fmtSecs(r.info.duration)].filter(Boolean).join(' · ')),
+        el('p', { class: 'hint' }, 'Só a transcrição (o vídeo não foi guardado). Clique num tempo para abrir o vídeo naquele minuto.'),
+        el('button', { class: 'btn small', onclick: () => api.shell.external(r.url) }, 'Abrir o vídeo')))
+    : el(isVideo ? 'video' : 'audio', { class: isVideo ? 'player' : 'player audio', controls: true, preload: 'metadata', src: fileUrl(r.file) });
   const montage = state.montage && state.montage.file === r.file ? state.montage : { file: r.file, items: [] };
   state.montage = montage;
 
@@ -1137,7 +1172,11 @@ function renderTranscript(r) {
   let hits = r.segments;
   const rows = [];
 
-  const seek = (t) => { player.currentTime = t; player.play().catch(() => {}); };
+  const seek = (t) => {
+    if (linkOnly) { api.shell.external(linkAt(r.url, t)); return; }
+    player.currentTime = t;
+    player.play().catch(() => {});
+  };
   const inMontage = (i) => montage.items.some((x) => x.index === i);
   const toggleMontage = (i) => {
     if (inMontage(i)) montage.items = montage.items.filter((x) => x.index !== i);
@@ -1164,7 +1203,7 @@ function renderTranscript(r) {
   };
   search.addEventListener('input', drawList);
 
-  player.addEventListener('timeupdate', () => {
+  if (!linkOnly) player.addEventListener('timeupdate', () => {
     const t = player.currentTime;
     let current = null;
     for (const x of rows) {
@@ -1215,6 +1254,8 @@ function renderTranscript(r) {
       }, 'Adicionar encontrados à montagem'),
       el('button', {
         class: 'btn',
+        disabled: linkOnly,
+        title: linkOnly ? 'Precisa do arquivo do vídeo' : '',
         onclick: async () => {
           const q = search.value.trim();
           if (!q || !hits.length) { toast('Busque algo primeiro.', true); return; }
@@ -1226,7 +1267,7 @@ function renderTranscript(r) {
         },
       }, 'Marcadores da busca'),
       editBtn,
-      el('label', { class: 'check-inline' }, follow, ' seguir o vídeo')),
+      linkOnly ? null : el('label', { class: 'check-inline' }, follow, ' seguir o vídeo')),
     list);
 
   // ---- aba Montagem ----
@@ -1253,7 +1294,9 @@ function renderTranscript(r) {
       drawMontage();
     };
     montageBox.replaceChildren(
-      el('p', { class: 'hint' }, 'Escolha as frases na aba Texto (botão +). Aqui você coloca na ordem que quiser e gera a timeline ou o vídeo. Bom para filme de votos, depoimentos e cortes para Shorts/Reels.'),
+      el('p', { class: 'hint' }, linkOnly
+        ? 'Esta transcrição não tem o vídeo guardado: dá para escolher e ordenar as frases (e copiar o texto), mas para gerar timeline ou vídeo baixe o vídeo pelo modo "Vídeo + transcrição".'
+        : 'Escolha as frases na aba Texto (botão +). Aqui você coloca na ordem que quiser e gera a timeline ou o vídeo. Bom para filme de votos, depoimentos e cortes para Shorts/Reels.'),
       montage.items.length
         ? el('div', { class: 'mlist' }, montage.items.map((x, k) => {
           const sg = r.segments[x.index];
@@ -1272,6 +1315,15 @@ function renderTranscript(r) {
         padSel, vertSel, el('label', { class: 'check-inline' }, capChk, ' legenda estilo Reels'),
         el('button', {
           class: 'btn',
+          onclick: () => {
+            if (!montage.items.length) { toast('Escolha frases primeiro.', true); return; }
+            api.clipboard.write(montage.items.map((x) => r.segments[x.index].text).join('\n'));
+            toast('Texto da montagem copiado.');
+          },
+        }, 'Copiar texto'),
+        el('button', {
+          class: 'btn',
+          disabled: linkOnly,
           onclick: async () => {
             if (!montage.items.length) { toast('Escolha frases primeiro.', true); return; }
             try {
@@ -1283,6 +1335,7 @@ function renderTranscript(r) {
         }, 'Timeline XML (Premiere / DaVinci)'),
         el('button', {
           class: 'btn primary',
+          disabled: !isVideo,
           onclick: async () => {
             if (!montage.items.length) { toast('Escolha frases primeiro.', true); return; }
             if (!isVideo) { toast('Este arquivo é só áudio: use a timeline XML.', true); return; }
@@ -1320,7 +1373,7 @@ function renderTranscript(r) {
           r.srtYoutube ? el('button', { class: 'btn', onclick: () => api.shell.reveal(r.srtYoutube) }, '.srt para subir no YouTube') : null,
           r.srtReels ? el('button', { class: 'btn', onclick: () => api.shell.reveal(r.srtReels) }, '.srt curta (Reels)') : null,
           el('button', { class: 'btn', onclick: () => api.shell.open(r.outDir) }, 'Abrir pasta'))),
-      el('div', { class: 'card' }, el('h3', {}, 'Legenda em inglês'),
+      linkOnly ? null : el('div', { class: 'card' }, el('h3', {}, 'Legenda em inglês'),
         el('p', {}, 'Traduz a fala para inglês e gera um .srt. Útil para convidados ou clientes estrangeiros.'),
         el('button', {
           class: 'btn',
@@ -1373,6 +1426,18 @@ function renderTranscript(r) {
   drawList();
   drawMontage();
   $('#transcriptResult').replaceChildren(box);
+}
+
+// Link do vídeo começando num tempo (YouTube aceita ?t=).
+function linkAt(url, t) {
+  try {
+    const u = new URL(url);
+    if (/(^|\.)youtube\.com$|(^|\.)youtu\.be$/.test(u.hostname)) {
+      u.searchParams.set('t', `${Math.max(0, Math.floor(t))}s`);
+      return u.toString();
+    }
+  } catch { /* link estranho */ }
+  return url;
 }
 
 function makeTabs(items) {

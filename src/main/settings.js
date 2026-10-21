@@ -38,6 +38,7 @@ function init(dir, downloadsDir) {
     transcribePrompt: '',
     useYoutubeSubs: true,
     transcribeAudioOnly: false,
+    transcribeUrlMode: 'text',
     afterTranscribe: false,
     afterAnalyze: false,
     silenceNoise: -35,

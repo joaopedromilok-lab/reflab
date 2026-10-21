@@ -20,8 +20,8 @@ Feito para uso pessoal e estudo.
   - paleta de cores de cada plano e do vídeo todo;
   - planos favoritos (★) que viram clipes.
 - **Momentos e clipes:** detecta os momentos mais intensos pelo áudio (torcida, narração, aplausos), exporta marcadores e recorta vários trechos de uma vez, inclusive na vertical 9:16.
-- **Transcrição e roteiro** (whisper.cpp, modelo large-v3-turbo, roda no próprio Mac):
-  - transcrever direto de um link, usando a legenda publicada pelo autor quando existir;
+- **Transcrição e roteiro** (whisper.cpp, modelo large-v3-turbo por padrão e large-v3 para máxima qualidade, roda no próprio Mac):
+  - transcrever direto de um link sem guardar o vídeo (usa a legenda do autor ou um áudio temporário que é apagado);
   - ignora música e silêncio (detecção de voz), aceita nomes e palavras difíceis, tempo de cada palavra;
   - player junto com o texto, correção do texto, busca com marcadores;
   - montagem pelo texto: escolher frases e gerar timeline XML ou vídeo (vertical e com legenda estilo Reels);

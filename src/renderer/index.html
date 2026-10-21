@@ -260,10 +260,16 @@
             <input id="trUrl" placeholder="cole o link (YouTube, Instagram, TikTok, Vimeo...)">
             <button class="btn primary" id="trUrlRun">Baixar e transcrever</button>
           </div>
-          <div class="checks" style="margin-top:10px">
-            <label><input type="checkbox" id="useYoutubeSubs"> Usar a legenda publicada pelo autor quando existir (instantâneo)</label>
-            <label><input type="checkbox" id="transcribeAudioOnly"> Baixar só o áudio (mais rápido, mas sem player de vídeo, decupagem e clipes)</label>
+          <div class="field">
+            <label>O que guardar</label>
+            <select id="transcribeUrlMode">
+              <option value="text">Só a transcrição: não guarda vídeo nem áudio</option>
+              <option value="video">Vídeo + transcrição: com player, decupagem, clipes e montagem</option>
+              <option value="audio">Áudio + transcrição: arquivo leve, com player de áudio</option>
+            </select>
+            <p class="hint" id="trUrlModeHint"></p>
           </div>
+          <label class="check-inline"><input type="checkbox" id="useYoutubeSubs"> Usar a legenda publicada pelo autor quando existir (instantâneo)</label>
         </div>
 
         <h3 class="label">Ou um arquivo do computador</h3>

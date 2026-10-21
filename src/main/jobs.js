@@ -36,6 +36,7 @@ const KIND_LABEL = {
   transcribe: 'Transcrição',
   beats: 'Marcar batidas',
   montage: 'Gerar vídeo',
+  linkTranscript: 'Transcrição do link',
   decupagem: 'Decupagem',
   silence: 'Remover silêncios',
 };
@@ -543,6 +544,23 @@ const HANDLERS = {
     });
     job.files.push(r.srt);
     const via = r.source === 'whisper' ? '' : ` (${r.source})`;
+    patch(job, { phase: `${r.segments.length} trechos transcritos${via}` });
+    return r;
+  },
+
+  async linkTranscript(job, ctx) {
+    const o = job.params;
+    patch(job, { phase: 'Lendo o link...' });
+    const info = await fetchInfo(o.url, o);
+    if (info.isPlaylist) throw new Error('Esse link é de uma playlist. Use o link de um vídeo só.');
+    patch(job, { title: info.title, thumbnail: info.thumbnail || null });
+    const r = await transcribe.transcribeLink(cleanUrl(o.url), info, {
+      baseDir: o.outputDir, language: o.language, model: o.model, prompt: o.prompt, vad: o.vad !== false,
+      useYoutubeSubs: o.useYoutubeSubs, ytdlpArgs: ytdlpBaseArgs(o), ...ctx,
+      onPhase: (phase) => patch(job, { phase, progress: 0 }),
+    });
+    job.files.push(r.txt);
+    const via = r.source === 'whisper' ? ' (áudio temporário apagado)' : ` (${r.source}, nada baixado)`;
     patch(job, { phase: `${r.segments.length} trechos transcritos${via}` });
     return r;
   },
