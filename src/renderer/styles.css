@@ -199,7 +199,7 @@ details.extras[open] summary::after { content: "−"; }
 .activity-head .link { font-size: 11px; }
 .jobs { padding: 0 12px 20px; }
 .job { background: #1c1d21; }
-.download-actions { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 22px; padding: 16px 0 8px; border-top: 1px solid #292a2f; }
+.download-actions { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: space-between; align-items: center; gap: 16px; margin: 22px calc(clamp(22px, 3vw, 42px) * -1) 0; padding: 13px clamp(22px, 3vw, 42px) 14px; border-top: 1px solid #292a2f; background: rgba(18, 19, 22, .97); backdrop-filter: blur(12px); }
 .download-queue-summary { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12px; }
 .queue-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: #555760; }
 .queue-dot.busy { background: var(--ok); box-shadow: 0 0 0 4px #3ecf8e1a; }
@@ -223,7 +223,7 @@ details.extras[open] summary::after { content: "−"; }
   .output-actions { gap: 5px; }
 }
 @media (max-width: 720px) {
-  .download-actions { align-items: stretch; flex-direction: column; }
+  .download-actions { align-items: stretch; flex-direction: column; margin-inline: -18px; padding-inline: 18px; }
   .download-actions .btn { width: 100%; }
   .step-heading { margin-bottom: 11px; }
   .output-location { flex-wrap: wrap; }
