@@ -24,7 +24,8 @@ Feito para uso pessoal e estudo.
   - transcrever direto de um link sem guardar o vídeo (usa a legenda do autor ou um áudio temporário que é apagado);
   - ignora música e silêncio (detecção de voz), aceita nomes e palavras difíceis, tempo de cada palavra;
   - player junto com o texto, correção do texto, busca com marcadores;
-  - montagem pelo texto: escolher frases e gerar timeline XML ou vídeo (vertical e com legenda estilo Reels);
+  - montagem pelo texto: escolher frases e gerar timeline XML ou vídeo;
+  - legenda gravada estilo Reels: 5 estilos prontos, fonte, cores, tamanho, posição, palavras em destaque, logo/marca d'água, formatos 9:16, 4:5 e 1:1 e prévia antes de gerar;
   - métricas do roteiro (palavras por minuto, tempo até a primeira fala, % com fala, pausas);
   - capítulos para o YouTube, `.srt` pronto para subir, legenda curta e legenda em inglês;
   - decupagem (roteiro AV: imagem | fala de cada plano);
