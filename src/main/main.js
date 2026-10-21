@@ -6,8 +6,10 @@ const settings = require('./settings');
 const history = require('./history');
 const jobs = require('./jobs');
 const study = require('./study');
+const updater = require('./updater');
 
 let win = null;
+let lastUpdate = null;
 
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
@@ -48,6 +50,17 @@ async function autoUpdateYtDlp() {
   if (r) send('tools:autoUpdated', r);
 }
 
+async function checkForUpdate(silent) {
+  try {
+    lastUpdate = await updater.check(app.getVersion());
+    if (lastUpdate.available) send('update:available', lastUpdate);
+    return lastUpdate;
+  } catch (err) {
+    if (silent) return null;
+    throw err;
+  }
+}
+
 function registerIpc() {
   ipcMain.handle('app:info', () => ({ version: app.getVersion(), platform: process.platform, arch: process.arch }));
 
@@ -58,6 +71,15 @@ function registerIpc() {
   });
   ipcMain.handle('tools:updateYtDlp', () => tools.updateYtDlp());
   ipcMain.handle('tools:versions', () => tools.versions());
+
+  ipcMain.handle('update:check', () => checkForUpdate(false));
+  ipcMain.handle('update:install', async () => {
+    if (!lastUpdate || !lastUpdate.available) await checkForUpdate(false);
+    if (!lastUpdate || !lastUpdate.available) throw new Error('Você já está na versão mais recente.');
+    await updater.install(lastUpdate, (p) => send('update:progress', p));
+    setTimeout(() => app.quit(), 300);
+    return true;
+  });
 
   ipcMain.handle('settings:get', () => settings.get());
   ipcMain.handle('settings:set', (_e, partial) => {
@@ -114,6 +136,7 @@ app.whenReady().then(() => {
   registerIpc();
   createWindow();
   setTimeout(autoUpdateYtDlp, 5000);
+  if (app.isPackaged) setTimeout(() => checkForUpdate(true), 8000);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

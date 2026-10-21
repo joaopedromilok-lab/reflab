@@ -173,3 +173,8 @@ details.extras summary { cursor: pointer; font-weight: 600; }
   .checks, .cards { grid-template-columns: 1fr; }
 }
 .job .note { font-size: 12px; margin-top: 6px; color: var(--warn); }
+
+.update-box { margin-top: auto; background: #2a1715; border: 1px solid #5a2a24; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; -webkit-app-region: no-drag; }
+.update-box span { color: var(--muted); }
+.update-box .btn { margin-top: 4px; }
+.update-box:not(.hidden) + .sidebar-foot { margin-top: 8px; }

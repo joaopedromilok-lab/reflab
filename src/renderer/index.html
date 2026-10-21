@@ -17,6 +17,11 @@
         <button class="nav" data-view="history"><span>☰</span> Histórico</button>
         <button class="nav" data-view="settings"><span>✦</span> Ajustes</button>
       </nav>
+      <div class="update-box hidden" id="updateBox">
+        <b>Nova versão disponível</b>
+        <span id="updateBoxVersion"></span>
+        <button class="btn primary small" id="updateBoxBtn">Atualizar agora</button>
+      </div>
       <div class="sidebar-foot" id="toolsBadge">Verificando ferramentas...</div>
     </aside>
 
@@ -222,6 +227,17 @@
           </div>
           <div class="field">
             <label class="check"><input type="checkbox" id="autoUpdate"> Atualizar o yt-dlp automaticamente (1x por dia)</label>
+          </div>
+        </div>
+
+        <h3 class="label">Atualizações do RefLab</h3>
+        <div class="card">
+          <p id="updateStatus" class="muted">Versão instalada: ...</p>
+          <pre id="updateNotes" class="output hidden"></pre>
+          <div class="bar hidden" id="updateBarWrap"><div id="updateBar"></div></div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn" id="updateCheck">Buscar atualização</button>
+            <button class="btn primary hidden" id="updateInstall">Atualizar agora</button>
           </div>
         </div>
 

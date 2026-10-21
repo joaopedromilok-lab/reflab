@@ -47,8 +47,10 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    }
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "RefLab-Setup-${version}.${ext}"
+    },
+    "publish": null
   },
   "dependencies": {
     "extract-zip": "^2.0.1"

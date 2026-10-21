@@ -63,6 +63,24 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
+## Lançar uma atualização
+
+O app verifica as Releases do GitHub sozinho ao abrir. Também dá para verificar em **Ajustes > Buscar atualização**.
+Quando existe versão nova, ele baixa, troca o app e reabre. Não é preciso baixar o `.dmg` de novo.
+
+Para lançar uma versão nova depois de mudar o código:
+
+```bash
+npm version minor
+```
+
+```bash
+git push --follow-tags
+```
+
+`npm version minor` sobe a versão (1.0.0 → 1.1.0), cria o commit e a tag `v1.1.0`. Use `patch` para correções pequenas (1.0.0 → 1.0.1).
+O push da tag faz o GitHub gerar o app e publicar a Release. A partir daí os apps instalados já encontram a atualização.
+
 ## Estrutura
 
 ```
@@ -71,6 +89,7 @@ src/main/      processo principal (Node/Electron)
   jobs.js      fila de tarefas e downloads
   media.js     presets de edição, conversão e proxy (ffmpeg)
   study.js     detecção de cortes, XML/EDL/CSV, folha de contato, planos, frames
+  updater.js   atualização do próprio app pelas Releases do GitHub
 src/renderer/  interface
 .github/       workflow que gera o app de Mac e Windows
 ```

@@ -17,6 +17,12 @@ contextBridge.exposeInMainWorld('api', {
     onProgress: on('tools:progress'),
     onAutoUpdated: on('tools:autoUpdated'),
   },
+  update: {
+    check: invoke('update:check'),
+    install: invoke('update:install'),
+    onAvailable: on('update:available'),
+    onProgress: on('update:progress'),
+  },
   settings: { get: invoke('settings:get'), set: invoke('settings:set') },
   dialog: { folder: invoke('dialog:folder'), video: invoke('dialog:video') },
   jobs: {

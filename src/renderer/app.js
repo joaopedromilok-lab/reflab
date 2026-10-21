@@ -212,6 +212,7 @@ async function loadVersions() {
   const v = await api.tools.versions();
   $('#toolVersions').textContent = Object.entries(v).map(([k, val]) => `${k}: ${val}`).join('\n');
   const info = await api.appInfo();
+  if (!updateChecked) $('#updateStatus').textContent = `Versão instalada: ${info.version}`;
   $('#aboutLine').textContent = `RefLab ${info.version} · ${info.platform} ${info.arch}`;
 }
 
@@ -541,6 +542,60 @@ $('#historyClear').addEventListener('click', async () => {
   await api.history.clear();
   loadHistory();
 });
+
+// ---------- atualização do RefLab ----------
+
+let updateInfo = null;
+let updateChecked = false;
+
+function showUpdate(info) {
+  updateInfo = info;
+  updateChecked = true;
+  $('#updateBox').classList.remove('hidden');
+  $('#updateBoxVersion').textContent = `Versão ${info.latest} (você tem a ${info.current})`;
+  $('#updateStatus').textContent = `Nova versão ${info.latest} disponível. Você tem a ${info.current}.`;
+  $('#updateInstall').classList.remove('hidden');
+  if (info.notes) {
+    $('#updateNotes').textContent = info.notes;
+    $('#updateNotes').classList.remove('hidden');
+  }
+}
+
+async function checkUpdate() {
+  updateChecked = true;
+  $('#updateStatus').textContent = 'Buscando atualização...';
+  try {
+    const info = await api.update.check();
+    if (info.available) showUpdate(info);
+    else $('#updateStatus').textContent = info.message || `Você já está na versão mais recente (${info.current}).`;
+  } catch (err) {
+    $('#updateStatus').textContent = `Não foi possível verificar: ${err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`;
+  }
+}
+
+async function installUpdate() {
+  const running = [...state.jobs.values()].some((j) => j.status === 'running' || j.status === 'queued');
+  if (running && !confirm('Há tarefas em andamento. Elas serão canceladas para atualizar. Continuar?')) return;
+  showView('settings');
+  $('#updateInstall').disabled = true;
+  $('#updateBoxBtn').disabled = true;
+  $('#updateBarWrap').classList.remove('hidden');
+  $('#updateStatus').textContent = 'Baixando a nova versão... o RefLab vai fechar e reabrir sozinho.';
+  try {
+    await api.update.install();
+    $('#updateStatus').textContent = 'Instalando... o RefLab vai reabrir em alguns segundos.';
+  } catch (err) {
+    $('#updateStatus').textContent = `Erro ao atualizar: ${err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`;
+    $('#updateInstall').disabled = false;
+    $('#updateBoxBtn').disabled = false;
+  }
+}
+
+api.update.onAvailable(showUpdate);
+api.update.onProgress((p) => { $('#updateBar').style.width = `${Math.round(p * 100)}%`; });
+$('#updateCheck').addEventListener('click', checkUpdate);
+$('#updateInstall').addEventListener('click', installUpdate);
+$('#updateBoxBtn').addEventListener('click', installUpdate);
 
 // ---------- início ----------
 
