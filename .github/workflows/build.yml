@@ -20,6 +20,15 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Compilar o transcritor (whisper.cpp com Metal)
+        run: |
+          git clone --depth 1 --branch v1.9.5 https://github.com/ggml-org/whisper.cpp wsrc
+          cmake -S wsrc -B wbuild -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF             -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON -DGGML_NATIVE=OFF             -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
+          cmake --build wbuild --config Release -j 4 --target whisper-cli
+          cp wbuild/bin/whisper-cli vendor/whisper/
+          codesign --force --sign - vendor/whisper/whisper-cli
+          otool -L vendor/whisper/whisper-cli
+          vendor/whisper/whisper-cli --help | head -3
       - run: npx electron-builder --mac --arm64 --publish never
       - name: Assinatura local (ad-hoc), DMG e ZIP
         run: |

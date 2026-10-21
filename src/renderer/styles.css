@@ -119,8 +119,8 @@ details.extras summary { cursor: pointer; font-weight: 600; }
 .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 14px; }
 .shot { background: var(--panel); border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
 .shot img { width: 100%; aspect-ratio: 16/9; object-fit: cover; display: block; background: #222; }
-.shot div { display: flex; justify-content: space-between; padding: 4px 7px; font-size: 11px; }
-.shot div span { color: var(--muted); }
+.shot .cap { display: flex; justify-content: space-between; padding: 4px 7px; font-size: 11px; }
+.shot .cap span { color: var(--muted); }
 
 /* histórico */
 #historySearch { margin-bottom: 12px; }
@@ -178,3 +178,41 @@ details.extras summary { cursor: pointer; font-weight: 600; }
 .update-box span { color: var(--muted); }
 .update-box .btn { margin-top: 4px; }
 .update-box:not(.hidden) + .sidebar-foot { margin-top: 8px; }
+
+/* v1.1 */
+code { background: #24242a; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+.small-text { font-size: 12px; }
+.err-text { color: var(--err); }
+.banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; background: #1d2a22; border: 1px solid #2c5a3e; border-radius: var(--radius); padding: 10px 12px; margin-bottom: 12px; font-size: 13px; }
+.banner b { word-break: break-all; font-weight: 600; }
+.info-box { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; margin-top: 10px; }
+.info-head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.info-head img { width: 120px; aspect-ratio: 16/9; object-fit: cover; border-radius: 6px; }
+.info-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.info-table th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.info-table td { padding: 5px 6px; border-bottom: 1px solid #222228; }
+.palette-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 12px; }
+.swatches { display: flex; height: 8px; }
+.swatches span { flex: 1; }
+.swatches.big { height: 26px; flex: 1; border-radius: 6px; overflow: hidden; }
+.shot .thumb { position: relative; }
+.star { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,.55); border: 0; color: #bbb; border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1; padding: 4px 6px; }
+.star.on { color: #ffd23f; }
+.moments { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; max-height: 340px; overflow-y: auto; }
+.moment { display: grid; grid-template-columns: 20px 40px 70px 1fr 120px; gap: 10px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 13px; cursor: pointer; }
+.meter { height: 6px; background: #2b2b31; border-radius: 3px; overflow: hidden; }
+.meter span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), #ffd23f); }
+.segments { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; max-height: 480px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; }
+.segment { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 4px 6px; border-radius: 6px; font-size: 13px; }
+.segment:hover { background: var(--panel-2); }
+.segment .mono { color: var(--accent-2); }
+mark { background: #ffd23f; color: #111; border-radius: 3px; padding: 0 2px; }
+.tags-filter { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.tag-chip { background: var(--panel-2); border: 1px solid var(--line); border-radius: 20px; padding: 3px 10px; font-size: 12px; cursor: pointer; color: var(--text); }
+.tag-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tag-chip.small { font-size: 11px; padding: 1px 8px; cursor: default; }
+.hitem .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.note-text { font-size: 12px; color: #c9c9cf; margin-top: 4px; white-space: pre-wrap; }
+.heditor { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.export-row > .muted { align-self: center; font-size: 13px; }

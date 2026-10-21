@@ -16,8 +16,15 @@ Feito para uso pessoal e estudo.
   - lista de cortes em CSV;
   - folha de contato (imagem + página HTML);
   - dividir o vídeo em um arquivo por plano.
-- **Ferramentas:** converter arquivo local, gerar proxy ProRes, extrair frames.
-- **Histórico** com busca.
+  - BPM da música, marcadores em cada batida e quantos cortes caem na batida;
+  - paleta de cores de cada plano e do vídeo todo;
+  - planos favoritos (★) que viram clipes.
+- **Momentos e clipes:** detecta os momentos mais intensos pelo áudio (torcida, narração, aplausos), exporta marcadores e recorta vários trechos de uma vez, inclusive na vertical 9:16.
+- **Transcrição local** (whisper.cpp): busca por palavra, marcadores dos trechos encontrados, clipes, `.srt` e texto.
+- **Ferramentas:** converter arquivo local, gerar proxy ProRes, versão vertical, marcar batidas de uma música, extrair frames.
+- **Antes de baixar:** resolução, fps, codec e tamanho estimado; aviso de link copiado; senha de vídeo (Vimeo).
+- **Integração:** botão para abrir no Premiere/DaVinci e notificação do sistema quando uma tarefa termina.
+- **Biblioteca** com busca, etiquetas e anotações.
 - **Atualização automática do yt-dlp** (o YouTube muda com frequência).
 
 Funciona com YouTube, Instagram, TikTok, Vimeo, X e os outros sites suportados pelo [yt-dlp](https://github.com/yt-dlp/yt-dlp).
@@ -90,6 +97,11 @@ src/main/      processo principal (Node/Electron)
   media.js     presets de edição, conversão e proxy (ffmpeg)
   study.js     detecção de cortes, XML/EDL/CSV, folha de contato, planos, frames
   updater.js   atualização do próprio app pelas Releases do GitHub
+  audio.js     detector de momentos e batidas (BPM)
+  clips.js     recortes de vários trechos e versão vertical
+  moments.js   resultado do detector e marcadores
+  transcribe.js transcrição com whisper.cpp
+  editors.js   abrir no Premiere / DaVinci
 src/renderer/  interface
 .github/       workflow que gera o app de Mac e Windows
 ```

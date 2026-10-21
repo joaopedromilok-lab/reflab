@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const tools = require('./tools');
@@ -7,6 +7,9 @@ const history = require('./history');
 const jobs = require('./jobs');
 const study = require('./study');
 const updater = require('./updater');
+const moments = require('./moments');
+const transcribe = require('./transcribe');
+const editors = require('./editors');
 
 let win = null;
 let lastUpdate = null;
@@ -111,8 +114,22 @@ function registerIpc() {
   ipcMain.handle('jobs:clearFinished', () => jobs.clearFinished());
 
   ipcMain.handle('study:load', (_e, file) => study.loadAnalysis(file));
+  ipcMain.handle('study:update', (_e, file, patch) => study.updateAnalysis(file, patch));
+  ipcMain.handle('moments:load', (_e, file) => moments.load(file));
+  ipcMain.handle('transcript:load', (_e, file) => transcribe.load(file));
+  ipcMain.handle('transcript:models', () => transcribe.modelsStatus());
+  ipcMain.handle('transcript:exportHits', async (_e, file, query, hits) => {
+    const t = await transcribe.load(file);
+    if (!t) throw new Error('Transcrição não encontrada.');
+    return moments.exportTranscriptHits(t, query, hits);
+  });
+  ipcMain.handle('url:info', (_e, url) => jobs.fetchInfo(url, settings.get()));
+  ipcMain.handle('clipboard:read', () => clipboard.readText());
+  ipcMain.handle('editors:list', () => editors.find());
+  ipcMain.handle('editors:open', (_e, id, file) => editors.open(id, file));
 
   ipcMain.handle('history:list', () => history.list());
+  ipcMain.handle('history:update', (_e, id, patch) => history.update(id, patch));
   ipcMain.handle('history:remove', (_e, id) => history.remove(id));
   ipcMain.handle('history:clear', () => history.clear());
 
@@ -123,7 +140,22 @@ function registerIpc() {
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
   });
 
-  jobs.events.on('update', (job) => send('jobs:update', job));
+  const notified = new Set();
+  jobs.events.on('update', (job) => {
+    send('jobs:update', job);
+    // Notificação do sistema quando a janela não está em foco.
+    if (!['done', 'error'].includes(job.status) || notified.has(job.id)) return;
+    notified.add(job.id);
+    if (win && win.isFocused()) return;
+    if (!Notification.isSupported()) return;
+    const n = new Notification({
+      title: job.status === 'done' ? `${job.kindLabel} concluído` : `${job.kindLabel}: erro`,
+      body: job.title || '',
+      silent: false,
+    });
+    n.on('click', () => { if (win) { win.show(); win.focus(); } });
+    n.show();
+  });
   jobs.events.on('removed', (id) => send('jobs:removed', id));
 }
 
@@ -132,6 +164,7 @@ app.whenReady().then(() => {
   tools.init(path.join(userData, 'bin'));
   settings.init(userData, app.getPath('downloads'));
   history.init(userData);
+  transcribe.init(path.join(userData, 'modelos'));
   jobs.setConcurrency(settings.get().concurrency);
   registerIpc();
   createWindow();

@@ -13,8 +13,10 @@
       <nav>
         <button class="nav active" data-view="download"><span>⬇</span> Baixar</button>
         <button class="nav" data-view="study"><span>✂</span> Estudar edição</button>
+        <button class="nav" data-view="moments"><span>⚡</span> Momentos e clipes</button>
+        <button class="nav" data-view="transcript"><span>❝</span> Transcrição</button>
         <button class="nav" data-view="tools"><span>⚙</span> Ferramentas</button>
-        <button class="nav" data-view="history"><span>☰</span> Histórico</button>
+        <button class="nav" data-view="history"><span>☰</span> Biblioteca</button>
         <button class="nav" data-view="settings"><span>✦</span> Ajustes</button>
       </nav>
       <div class="update-box hidden" id="updateBox">
@@ -33,7 +35,20 @@
           <p>Cole um ou mais links (um por linha). YouTube, Instagram, TikTok, Vimeo, X e muitos outros.</p>
         </header>
 
+        <div class="banner hidden" id="clipBanner">
+          <span>Link copiado: <b id="clipUrl"></b></span>
+          <div class="row">
+            <button class="btn primary small" id="clipUse">Usar este link</button>
+            <button class="btn small" id="clipIgnore">Ignorar</button>
+          </div>
+        </div>
+
         <textarea id="urls" rows="3" placeholder="https://www.youtube.com/watch?v=..."></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="btn small" id="infoBtn">Ver informações do vídeo</button>
+          <span class="muted small-text">resolução, fps, duração e tamanho estimado antes de baixar</span>
+        </div>
+        <div id="urlInfo"></div>
 
         <h3 class="label">Formato para edição</h3>
         <div class="presets" id="presets"></div>
@@ -52,12 +67,9 @@
             </select>
           </div>
           <div class="field">
-            <label>Baixar só um trecho <span class="muted">(opcional)</span></label>
-            <div class="row">
-              <input id="trimStart" placeholder="início ex.: 1:20">
-              <span class="muted">até</span>
-              <input id="trimEnd" placeholder="fim ex.: 1:45">
-            </div>
+            <label>Baixar só trechos <span class="muted">(opcional)</span></label>
+            <input id="sections" placeholder="ex.: 1:20-1:45, 3:00-3:30">
+            <p class="hint">Um ou vários trechos separados por vírgula. Cada um vira um arquivo.</p>
           </div>
         </div>
 
@@ -101,6 +113,10 @@
             <label><input type="checkbox" id="keepOriginal"> Manter também o arquivo original (antes da conversão)</label>
             <label><input type="checkbox" id="normalizeAudio"> Normalizar volume (só nos formatos de áudio)</label>
           </div>
+          <div class="field">
+            <label>Senha do vídeo <span class="muted">(Vimeo e outros vídeos protegidos)</span></label>
+            <input id="videoPassword" type="password" placeholder="deixe em branco se o vídeo não tiver senha" autocomplete="off">
+          </div>
         </details>
 
         <div class="actions">
@@ -134,6 +150,92 @@
         <div id="studyResult"></div>
       </section>
 
+      <!-- MOMENTOS E CLIPES -->
+      <section class="view" id="view-moments">
+        <header class="view-head">
+          <h1>Momentos e clipes</h1>
+          <p>Encontra os momentos mais intensos pelo áudio (torcida, narração, aplausos, risadas) e recorta vários trechos de uma vez.</p>
+        </header>
+        <div class="drop" id="momentsDrop">
+          <div><b>Arraste um vídeo aqui</b> ou <button class="link" id="momentsPick">escolha um arquivo</button></div>
+          <div class="muted" id="momentsFile">Nenhum vídeo selecionado</div>
+        </div>
+
+        <h3 class="label">Detector de momentos</h3>
+        <div class="grid2">
+          <div class="field">
+            <label>Sensibilidade <span class="muted" id="momSensLabel"></span></label>
+            <input type="range" id="momentSensitivity" min="4" max="16" step="1">
+            <p class="hint">Mais sensível encontra mais momentos (inclusive menores).</p>
+          </div>
+          <div class="field">
+            <label>Máximo de momentos</label>
+            <select id="momentMax">
+              <option value="10">10</option><option value="20">20</option><option value="30">30</option><option value="50">50</option><option value="100">100</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Segundos antes do pico (para o clipe)</label>
+            <input id="momentBefore" type="number" min="0" max="120" step="1">
+            <p class="hint">No futebol, o lance acontece antes da torcida gritar: use uns 10 a 15 s.</p>
+          </div>
+          <div class="field">
+            <label>Segundos depois do pico</label>
+            <input id="momentAfter" type="number" min="0" max="120" step="1">
+          </div>
+        </div>
+        <div class="actions"><button class="btn primary needs-moments" id="momentsRun">Detectar momentos</button></div>
+        <div id="momentsResult"></div>
+
+        <h3 class="label">Recortar trechos</h3>
+        <div class="card">
+          <p>Um trecho por linha ou separados por vírgula. Ex.: <code>12:30-12:50</code>, <code>1:02:10-1:02:40</code></p>
+          <textarea id="clipRanges" rows="3" placeholder="12:30-12:50&#10;34:10-34:40"></textarea>
+          <div class="row" style="margin-top:8px; flex-wrap: wrap">
+            <select id="clipMode" style="width:auto">
+              <option value="precise">Corte exato (reconverte em H.264)</option>
+              <option value="fast">Rápido (sem reconverter, corte no keyframe)</option>
+            </select>
+            <select id="clipVertical" style="width:auto">
+              <option value="">Formato original</option>
+              <option value="blur">Vertical 9:16 com fundo desfocado</option>
+              <option value="crop">Vertical 9:16 cortando o centro</option>
+            </select>
+            <button class="btn primary needs-moments" id="clipsRun">Recortar</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TRANSCRIÇÃO -->
+      <section class="view" id="view-transcript">
+        <header class="view-head">
+          <h1>Transcrição</h1>
+          <p>Transcreve a fala do vídeo no próprio computador. Depois é só buscar uma palavra para ir direto no trecho: votos, discursos, narração.</p>
+        </header>
+        <div class="drop" id="transcriptDrop">
+          <div><b>Arraste um vídeo ou áudio aqui</b> ou <button class="link" id="transcriptPick">escolha um arquivo</button></div>
+          <div class="muted" id="transcriptFile">Nenhum arquivo selecionado</div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label>Idioma da fala</label>
+            <select id="transcribeLanguage">
+              <option value="pt">Português</option>
+              <option value="en">Inglês</option>
+              <option value="es">Espanhol</option>
+              <option value="auto">Detectar automaticamente</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Qualidade</label>
+            <select id="transcribeModel"></select>
+            <p class="hint">O modelo é baixado só na primeira vez. "Preciso" é o melhor para português.</p>
+          </div>
+        </div>
+        <div class="actions"><button class="btn primary" id="transcriptRun" disabled>Transcrever</button></div>
+        <div id="transcriptResult"></div>
+      </section>
+
       <!-- FERRAMENTAS -->
       <section class="view" id="view-tools">
         <header class="view-head">
@@ -165,6 +267,22 @@
             <button class="btn primary needs-file" id="proxyRun">Gerar proxy</button>
           </div>
           <div class="card">
+            <h3>Versão vertical (9:16)</h3>
+            <p>Para Reels, TikTok e Shorts, em 1080x1920.</p>
+            <div class="row">
+              <select id="verticalStyle">
+                <option value="blur">Vídeo inteiro com fundo desfocado</option>
+                <option value="crop">Cortar o centro</option>
+              </select>
+              <button class="btn primary needs-file" id="verticalRun">Gerar</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Marcar batidas da música</h3>
+            <p>Para a música que você vai usar na edição: gera marcadores em cada batida (XML para Premiere/DaVinci e EDL para DaVinci) e mostra o BPM.</p>
+            <button class="btn primary needs-file" id="beatsRun">Marcar batidas</button>
+          </div>
+          <div class="card">
             <h3>Extrair um frame</h3>
             <p>Salva um frame em PNG na qualidade original.</p>
             <div class="row">
@@ -187,12 +305,13 @@
       <section class="view" id="view-history">
         <header class="view-head row-between">
           <div>
-            <h1>Histórico</h1>
-            <p>Tudo que já foi baixado.</p>
+            <h1>Biblioteca</h1>
+            <p>Tudo que já foi baixado. Adicione etiquetas e anotações para encontrar referências depois.</p>
           </div>
           <button class="btn" id="historyClear">Limpar histórico</button>
         </header>
-        <input id="historySearch" placeholder="Buscar por título, canal ou site...">
+        <input id="historySearch" placeholder="Buscar por título, canal, site, etiqueta ou anotação...">
+        <div id="tagFilter" class="tags-filter"></div>
         <div id="historyList" class="history"></div>
       </section>
 

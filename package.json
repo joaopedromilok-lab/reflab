@@ -1,7 +1,7 @@
 {
   "name": "reflab",
   "productName": "RefLab",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Baixador e laboratório de referências para editores de vídeo",
   "main": "src/main/main.js",
   "author": "RefLab",
@@ -50,7 +50,17 @@
       "allowToChangeInstallationDirectory": true,
       "artifactName": "RefLab-Setup-${version}.${ext}"
     },
-    "publish": null
+    "publish": null,
+    "extraResources": [
+      {
+        "from": "vendor/whisper",
+        "to": "whisper",
+        "filter": [
+          "**/*",
+          "!.gitkeep"
+        ]
+      }
+    ]
   },
   "dependencies": {
     "extract-zip": "^2.0.1"

@@ -32,7 +32,8 @@ function lineSplitter(cb) {
 }
 
 // Inicia um processo. Retorna { child, promise, kill }.
-// promise resolve com { code, stdout, stderr } (as saídas guardam só o final).
+// promise resolve com { code, stdout, stderr } (as saídas guardam só o final,
+// a menos que opts.keepAll seja true).
 function start(cmd, args, opts = {}) {
   const child = spawn(cmd, args, {
     windowsHide: true,
@@ -42,9 +43,10 @@ function start(cmd, args, opts = {}) {
   });
   let stdout = '';
   let stderr = '';
+  const limit = opts.keepAll ? Infinity : KEEP_CHARS;
   const keep = (acc, d) => {
     acc += d.toString('utf8');
-    return acc.length > KEEP_CHARS ? acc.slice(-KEEP_CHARS) : acc;
+    return acc.length > limit ? acc.slice(-limit) : acc;
   };
   child.stdout.on('data', (d) => { stdout = keep(stdout, d); });
   child.stderr.on('data', (d) => { stderr = keep(stderr, d); });

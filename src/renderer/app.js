@@ -65,7 +65,14 @@ const state = {
   jobs: new Map(),
   studyFile: null,
   toolsFile: null,
+  momentsFile: null,
+  transcriptFile: null,
+  transcript: null,
+  moments: null,
   history: [],
+  tagFilter: null,
+  editingId: null,
+  editors: [],
 };
 
 const PRESETS = [
@@ -83,6 +90,7 @@ function showView(name) {
   $$('.nav').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${name}`));
   if (name === 'history') loadHistory();
+  if (name === 'transcript') loadModels();
   if (name === 'settings') loadVersions();
 }
 $$('.nav').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
@@ -138,6 +146,7 @@ function updateHints() {
   $('#projectName').classList.toggle('hidden', s.organize !== 'project');
   $('#thrLabel').textContent = `(${Math.round(((0.6 - s.sceneThreshold) / 0.5) * 100)}%)`;
   $('#minLabel').textContent = `(${Number(s.minShot).toFixed(2)}s)`;
+  $('#momSensLabel').textContent = `(${Math.round(((16 - s.momentSensitivity) / 12) * 100)}%)`;
 }
 
 async function initSettings() {
@@ -153,6 +162,15 @@ async function initSettings() {
   bindField('concurrency', 'concurrency', { transform: Number });
   bindField('cookiesBrowser', 'cookiesBrowser');
   bindField('subLangs', 'subLangs', { transform: (v) => v.trim() || 'pt,pt-BR,en,en-US' });
+  bindField('momentMax', 'momentMax', { transform: Number });
+  bindField('momentBefore', 'momentBefore', { transform: (v) => Math.max(0, Number(v) || 0) });
+  bindField('momentAfter', 'momentAfter', { transform: (v) => Math.max(0, Number(v) || 0) });
+  bindField('clipMode', 'clipMode');
+  bindField('transcribeLanguage', 'transcribeLanguage');
+  const sens = $('#momentSensitivity');
+  sens.value = String(20 - state.settings.momentSensitivity);
+  sens.addEventListener('input', () => { state.settings.momentSensitivity = 20 - Number(sens.value); updateHints(); });
+  sens.addEventListener('change', () => saveSetting({ momentSensitivity: state.settings.momentSensitivity }));
   // Sensibilidade: o slider mostra "mais sensível" à direita (limiar menor).
   const thr = $('#sceneThreshold');
   thr.value = String(0.7 - state.settings.sceneThreshold);
@@ -249,8 +267,9 @@ $('#startDownload').addEventListener('click', async () => {
   if (!(await ensureTools())) return;
   const s = state.settings;
   if (s.organize === 'project' && !s.projectName.trim()) { toast('Digite o nome do projeto.', true); return; }
-  const trimStart = $('#trimStart').value.trim();
-  const trimEnd = $('#trimEnd').value.trim();
+  const sections = $('#sections').value.trim();
+  const videoPassword = $('#videoPassword').value;
+  if (sections && !/^[\d:.,\s;\-–a]+$/i.test(sections)) { toast('Trechos inválidos. Use o formato 1:20-1:45, 3:00-3:30', true); return; }
   for (const url of urls) {
     await api.jobs.add('download', {
       url,
@@ -269,13 +288,14 @@ $('#startDownload').addEventListener('click', async () => {
       playlist: s.playlist,
       normalizeAudio: s.normalizeAudio,
       cookiesBrowser: s.cookiesBrowser,
-      trimStart,
-      trimEnd,
+      sections,
+      videoPassword,
     });
   }
   $('#urls').value = '';
-  $('#trimStart').value = '';
-  $('#trimEnd').value = '';
+  $('#sections').value = '';
+  $('#videoPassword').value = '';
+  $('#urlInfo').replaceChildren();
   toast(urls.length > 1 ? `${urls.length} links adicionados à fila.` : 'Adicionado à fila.');
 });
 
@@ -298,12 +318,20 @@ function jobCard(job) {
   if (job.status === 'done') {
     if (job.kind === 'analyze') {
       btns.push(el('button', { class: 'btn small', onclick: () => { showView('study'); renderAnalysis(job.result); } }, 'Ver análise'));
+    } else if (job.kind === 'moments') {
+      btns.push(el('button', { class: 'btn small', onclick: () => { showView('moments'); renderMoments(job.result); } }, 'Ver momentos'));
+    } else if (job.kind === 'transcribe') {
+      btns.push(el('button', { class: 'btn small', onclick: () => { showView('transcript'); renderTranscript(job.result); } }, 'Ver transcrição'));
     } else if (firstFile) {
       btns.push(el('button', { class: 'btn small', onclick: () => api.shell.open(firstFile) }, 'Abrir'));
       btns.push(el('button', { class: 'btn small', onclick: () => api.shell.reveal(firstFile) }, 'Mostrar na pasta'));
       if (isVideoFile(firstFile)) {
         btns.push(el('button', { class: 'btn small', onclick: () => { setStudyFile(firstFile); showView('study'); } }, 'Estudar cortes'));
+        if (job.kind === 'download') {
+          btns.push(el('button', { class: 'btn small', onclick: () => { setMomentsFile(firstFile); showView('moments'); } }, 'Momentos'));
+        }
       }
+      if (/\.(mp4|mov|xml)$/i.test(firstFile)) btns.push(...editorButtons(firstFile, true));
     }
   }
   if (job.status === 'error' || job.status === 'canceled') {
@@ -345,6 +373,13 @@ api.jobs.onUpdate((job) => {
     if (job.kind === 'analyze') {
       if (state.studyFile === job.params.file) renderAnalysis(job.result);
       toast('Análise concluída.');
+    } else if (job.kind === 'moments') {
+      if (state.momentsFile === job.params.file) renderMoments(job.result);
+      toast('Momentos encontrados.');
+    } else if (job.kind === 'transcribe') {
+      if (state.transcriptFile === job.params.file) renderTranscript(job.result);
+      loadModels();
+      toast('Transcrição concluída.');
     } else if (job.kind === 'download') {
       toast(`Concluído: ${job.title}`);
     } else {
@@ -429,8 +464,28 @@ function pacingChart(r) {
     rect.append(title);
     svg.append(rect);
   });
+  if (r.beats && r.beats.beats) {
+    for (const b of r.beats.beats) {
+      const line = document.createElementNS(NS, 'rect');
+      line.setAttribute('x', ((b / dur) * W).toFixed(2));
+      line.setAttribute('y', '0');
+      line.setAttribute('width', '0.8');
+      line.setAttribute('height', '8');
+      line.setAttribute('fill', '#3ecf8e');
+      svg.append(line);
+    }
+  }
   return el('div', { class: 'chart' }, svg,
-    el('div', { class: 'axis' }, el('span', {}, '0:00'), el('span', {}, 'barras baixas = cortes rápidos'), el('span', {}, fmtSecs(dur))));
+    el('div', { class: 'axis' }, el('span', {}, '0:00'),
+      el('span', {}, r.beats && r.beats.beats && r.beats.beats.length ? 'barras baixas = cortes rápidos · traços verdes = batidas' : 'barras baixas = cortes rápidos'),
+      el('span', {}, fmtSecs(dur))));
+}
+
+function swatches(colors, cls = 'swatches') {
+  return el('div', { class: cls }, (colors || []).map((c) => {
+    const color = typeof c === 'string' ? c : c.color;
+    return el('span', { style: `background:${color}`, title: color });
+  }));
 }
 
 function renderAnalysis(r) {
@@ -440,9 +495,29 @@ function renderAnalysis(r) {
     $('#studyFile').textContent = r.file;
     $('#studyRun').disabled = false;
   }
+  state.analysis = r;
   const s = r.stats;
   const stat = (v, label) => el('div', { class: 'stat' }, el('b', {}, v), el('span', {}, label));
   const ex = r.exports || {};
+  const favs = new Set(r.favorites || []);
+  // Um salvamento por vez, sempre com a lista mais recente.
+  let saving = Promise.resolve();
+  const saveFavs = () => {
+    saving = saving.then(() => api.study.update(r.file, { favorites: [...favs] })).then((u) => { r.favorites = u.favorites; }).catch(() => {});
+  };
+  const favButton = () => el('button', {
+    class: 'btn',
+    onclick: () => {
+      const shots = r.shots.filter((sh) => favs.has(sh.index));
+      if (!shots.length) { toast('Marque planos com ★ primeiro.', true); return; }
+      api.jobs.add('clips', {
+        file: r.file, title: `${shots.length} plano(s) favorito(s)`, mode: state.settings.clipMode,
+        ranges: shots.map((sh) => ({ start: sh.start, end: sh.end, name: `plano ${sh.index}` })),
+      });
+      toast('Recortando os favoritos...');
+    },
+  }, 'Recortar favoritos ★');
+
   const box = el('div', { class: 'result' },
     el('h3', {}, `Resultado: ${basename(r.file)}`),
     el('div', { class: 'stats' },
@@ -451,22 +526,40 @@ function renderAnalysis(r) {
       stat(s.cutsPerMinute.toFixed(1), 'cortes por minuto'),
       stat(`${s.median.toFixed(2)}s`, 'mediana'),
       stat(`${s.shortest.toFixed(2)}s`, 'plano mais curto'),
-      stat(`${s.longest.toFixed(2)}s`, 'plano mais longo')),
+      stat(`${s.longest.toFixed(2)}s`, 'plano mais longo'),
+      s.bpm ? stat(`${s.bpm}`, 'BPM da música') : null,
+      s.bpm && s.cuts ? stat(`${Math.round((s.cutsOnBeatRatio || 0) * 100)}%`, `dos cortes na batida (${s.cutsOnBeat} de ${s.cuts})`) : null),
     pacingChart(r),
+    r.palette && r.palette.length ? el('div', { class: 'palette-row' }, el('span', { class: 'muted' }, 'Paleta geral'), swatches(r.palette, 'swatches big')) : null,
     el('div', { class: 'export-row' },
       ex.html ? el('button', { class: 'btn primary', onclick: () => api.shell.open(ex.html) }, 'Abrir folha de contato') : null,
       ex.xml ? el('button', { class: 'btn', onclick: () => api.shell.reveal(ex.xml) }, 'XML (Premiere / DaVinci)') : null,
+      ...(ex.xml ? editorButtons(ex.xml, false) : []),
       ex.edl ? el('button', { class: 'btn', onclick: () => api.shell.reveal(ex.edl) }, 'EDL de marcadores (DaVinci)') : null,
+      ex.beatsXml ? el('button', { class: 'btn', onclick: () => api.shell.reveal(ex.beatsXml) }, 'Marcadores das batidas') : null,
       ex.csv ? el('button', { class: 'btn', onclick: () => api.shell.open(ex.csv) }, 'Lista de cortes (CSV)') : null,
       el('button', { class: 'btn', onclick: () => api.jobs.add('split', { file: r.file, title: basename(r.file) }) }, 'Dividir em planos'),
+      favButton(),
       el('button', { class: 'btn', onclick: () => api.shell.open(r.outDir) }, 'Abrir pasta da análise')),
     el('div', { class: 'howto' },
       el('p', {}, el('b', {}, 'Premiere: '), 'Arquivo > Importar > escolha o XML. Abre uma sequência já cortada em cada plano, com marcadores nos cortes.'),
       el('p', {}, el('b', {}, 'DaVinci Resolve: '), 'Arquivo > Importar > Timeline > escolha o XML. Ou, numa timeline sua com o vídeo começando em 01:00:00:00, clique com o botão direito na timeline > Importar > Marcadores da timeline de EDL.'),
-      el('p', {}, el('b', {}, 'Dividir em planos: '), 'cria um arquivo .mp4 por plano na pasta "Planos", para remontar como exercício.')),
-    el('div', { class: 'shots' }, r.shots.map((sh) => el('div', { class: 'shot', title: `Plano ${sh.index}` },
-      sh.thumb ? el('img', { src: fileUrl(sh.thumb), loading: 'lazy', alt: '' }) : el('img', { alt: '' }),
-      el('div', {}, el('b', {}, `#${sh.index}`), el('span', {}, `${clock(sh.start)} · ${sh.duration.toFixed(2)}s`))))));
+      el('p', {}, el('b', {}, 'Favoritos: '), 'clique na ★ dos planos que você quer guardar e use "Recortar favoritos" para gerar um clipe de cada.')),
+    el('div', { class: 'shots' }, r.shots.map((sh) => {
+      const star = el('button', {
+        class: `star${favs.has(sh.index) ? ' on' : ''}`,
+        title: 'Favorito',
+        onclick: () => {
+          if (favs.has(sh.index)) favs.delete(sh.index); else favs.add(sh.index);
+          star.classList.toggle('on', favs.has(sh.index));
+          saveFavs();
+        },
+      }, '★');
+      return el('div', { class: 'shot', title: `Plano ${sh.index}` },
+        el('div', { class: 'thumb' }, sh.thumb ? el('img', { src: fileUrl(sh.thumb), loading: 'lazy', alt: '' }) : el('img', { alt: '' }), star),
+        sh.palette ? swatches(sh.palette) : null,
+        el('div', { class: 'cap' }, el('b', {}, `#${sh.index}`), el('span', {}, `${clock(sh.start)} · ${sh.duration.toFixed(2)}s`)));
+    })));
   $('#studyResult').replaceChildren(box);
 }
 
@@ -509,12 +602,44 @@ async function loadHistory() {
   renderHistory();
 }
 
+function renderTagFilter() {
+  const tags = [...new Set(state.history.flatMap((h) => h.tags || []))].sort((a, b) => a.localeCompare(b));
+  const box = $('#tagFilter');
+  if (!tags.length) { box.replaceChildren(); return; }
+  box.replaceChildren(
+    el('button', { class: `tag-chip${state.tagFilter ? '' : ' on'}`, onclick: () => { state.tagFilter = null; renderHistory(); } }, 'Todas'),
+    ...tags.map((t) => el('button', {
+      class: `tag-chip${state.tagFilter === t ? ' on' : ''}`,
+      onclick: () => { state.tagFilter = state.tagFilter === t ? null : t; renderHistory(); },
+    }, t)));
+}
+
+function historyEditor(h) {
+  const tags = el('input', { value: (h.tags || []).join(', '), placeholder: 'etiquetas separadas por vírgula (ex.: entrada da noiva, drone, gol)' });
+  const notes = el('textarea', { rows: '3', placeholder: 'anotações: o que chamou atenção nessa referência?' });
+  notes.value = h.notes || '';
+  return el('div', { class: 'heditor' }, tags, notes,
+    el('div', { class: 'row' },
+      el('button', {
+        class: 'btn primary small',
+        onclick: async () => {
+          await api.history.update(h.id, { tags: tags.value.split(',').map((t) => t.trim()).filter(Boolean), notes: notes.value });
+          state.editingId = null;
+          loadHistory();
+        },
+      }, 'Salvar'),
+      el('button', { class: 'btn small', onclick: () => { state.editingId = null; renderHistory(); } }, 'Cancelar')));
+}
+
 function renderHistory() {
+  renderTagFilter();
   const q = $('#historySearch').value.trim().toLowerCase();
-  const items = state.history.filter((h) => !q || [h.title, h.uploader, h.site, h.file].join(' ').toLowerCase().includes(q));
+  const items = state.history.filter((h) =>
+    (!state.tagFilter || (h.tags || []).includes(state.tagFilter))
+    && (!q || [h.title, h.uploader, h.site, h.file, (h.tags || []).join(' '), h.notes].join(' ').toLowerCase().includes(q)));
   const list = $('#historyList');
   if (!items.length) {
-    list.replaceChildren(el('p', { class: 'empty' }, q ? 'Nada encontrado.' : 'Nenhum download ainda.'));
+    list.replaceChildren(el('p', { class: 'empty' }, q || state.tagFilter ? 'Nada encontrado.' : 'Nenhum download ainda.'));
     return;
   }
   list.replaceChildren(...items.slice(0, 300).map((h) => {
@@ -522,13 +647,19 @@ function renderHistory() {
       [h.uploader, h.site, new Date(h.date).toLocaleString('pt-BR'), (PRESETS.find((p) => p.id === h.preset) || {}).name].filter(Boolean).join(' · '));
     const row = el('div', { class: 'hitem' },
       h.thumbnail ? el('img', { src: h.thumbnail, alt: '', loading: 'lazy' }) : el('div', { class: 'ph' }),
-      el('div', { class: 'meta' }, el('div', { class: 'title', title: h.title }, h.title || basename(h.file)), sub),
+      el('div', { class: 'meta' },
+        el('div', { class: 'title', title: h.title }, h.title || basename(h.file)),
+        sub,
+        (h.tags || []).length ? el('div', { class: 'tags' }, h.tags.map((t) => el('span', { class: 'tag-chip small' }, t))) : null,
+        h.notes ? el('div', { class: 'note-text' }, h.notes) : null),
       el('div', { class: 'btns' },
         el('button', { class: 'btn small', onclick: () => api.shell.open(h.file) }, 'Abrir'),
         el('button', { class: 'btn small', onclick: () => api.shell.reveal(h.file) }, 'Pasta'),
         isVideoFile(h.file) ? el('button', { class: 'btn small', onclick: () => { setStudyFile(h.file); showView('study'); } }, 'Estudar') : null,
+        el('button', { class: 'btn small', onclick: () => { state.editingId = state.editingId === h.id ? null : h.id; renderHistory(); } }, 'Etiquetas e notas'),
         h.url ? el('button', { class: 'btn small', onclick: () => api.shell.external(h.url) }, 'Link') : null,
-        el('button', { class: 'btn small', onclick: async () => { await api.history.remove(h.id); loadHistory(); } }, 'Remover')));
+        el('button', { class: 'btn small', onclick: async () => { await api.history.remove(h.id); loadHistory(); } }, 'Remover')),
+      state.editingId === h.id ? historyEditor(h) : null);
     api.fs.exists(h.file).then((ok) => {
       if (!ok) sub.prepend(el('span', { class: 'missing' }, 'arquivo não encontrado · '));
     });
@@ -542,6 +673,347 @@ $('#historyClear').addEventListener('click', async () => {
   await api.history.clear();
   loadHistory();
 });
+
+// ---------- editores (Premiere / DaVinci) ----------
+
+function editorButtons(file, small) {
+  const cls = small ? 'btn small' : 'btn';
+  return state.editors.map((ed) => el('button', {
+    class: cls,
+    title: ed.id === 'resolve' ? 'O DaVinci abre, e você importa o arquivo por dentro dele (Arquivo > Importar).' : '',
+    onclick: async () => {
+      try {
+        await api.editors.open(ed.id, file);
+        if (ed.id === 'resolve') { api.shell.reveal(file); toast('Abrindo o DaVinci. Importe o arquivo por Arquivo > Importar.'); }
+      } catch (err) { toast(err.message, true); }
+    },
+  }, ed.id === 'premiere' ? 'Abrir no Premiere' : 'Abrir DaVinci'));
+}
+
+// ---------- link copiado ----------
+
+let lastClip = '';
+async function checkClipboard() {
+  let text = '';
+  try { text = (await api.clipboard.read()).trim(); } catch { return; }
+  if (!/^https?:\/\/\S+$/i.test(text) || text === lastClip) return;
+  if ($('#urls').value.includes(text)) return;
+  lastClip = text;
+  $('#clipUrl').textContent = text.length > 70 ? `${text.slice(0, 70)}...` : text;
+  $('#clipBanner').classList.remove('hidden');
+}
+$('#clipUse').addEventListener('click', () => {
+  const cur = $('#urls').value.trim();
+  $('#urls').value = cur ? `${cur}\n${lastClip}` : lastClip;
+  $('#clipBanner').classList.add('hidden');
+  showView('download');
+});
+$('#clipIgnore').addEventListener('click', () => $('#clipBanner').classList.add('hidden'));
+window.addEventListener('focus', checkClipboard);
+
+// ---------- informações antes de baixar ----------
+
+const MBPS = {
+  h264: { 2160: 45, 1440: 24, 1080: 12, 720: 6, 480: 3, 360: 1.5, 240: 0.8, 144: 0.4 },
+  hevc: { 2160: 45, 1440: 25, 1080: 14, 720: 8, 480: 8, 360: 8, 240: 8, 144: 8 },
+};
+function estimateMB(preset, row, duration) {
+  if (!duration) return null;
+  const h = row.height;
+  const key = [2160, 1440, 1080, 720, 480, 360, 240, 144].find((k) => h >= k) || 144;
+  // Quando o vídeo já vem no codec certo, o RefLab não reconverte.
+  const copied = preset === 'original'
+    || (preset === 'h264' && /^avc/.test(row.vcodec))
+    || (preset === 'hevc' && /^(hev|hvc)/.test(row.vcodec));
+  if (copied) return row.size ? row.size / 1048576 : null;
+  let mbps;
+  if (preset === 'prores') mbps = 147 * ((h * (h * 16 / 9)) / (1920 * 1080)) * ((row.fps || 30) / 30) + 2.3;
+  else if (preset === 'wav') mbps = 2.3;
+  else if (preset === 'mp3') mbps = 0.32;
+  else mbps = MBPS[preset][key] + 0.32;
+  return (mbps * duration) / 8;
+}
+
+function fmtMB(mb) {
+  if (mb === null || mb === undefined || !Number.isFinite(mb)) return '?';
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.max(1, Math.round(mb))} MB`;
+}
+
+$('#infoBtn').addEventListener('click', async () => {
+  const url = $('#urls').value.split(/\s+/).find((u) => /^https?:\/\//i.test(u));
+  if (!url) { toast('Cole um link primeiro.', true); return; }
+  if (!(await ensureTools())) return;
+  const box = $('#urlInfo');
+  box.replaceChildren(el('p', { class: 'muted info-box' }, 'Lendo informações do vídeo...'));
+  try {
+    const info = await api.urlInfo(url);
+    if (info.isPlaylist) {
+      box.replaceChildren(el('div', { class: 'info-box' }, el('b', {}, info.title), el('p', { class: 'muted' }, `Playlist com ${info.count} vídeos. Marque "baixar a playlist inteira" em Extras.`)));
+      return;
+    }
+    const preset = state.settings.preset;
+    const label = (PRESETS.find((p) => p.id === preset) || {}).name;
+    const rows = info.heights.filter((x, i, a) => a.findIndex((y) => y.height === x.height) === i).map((x) => el('tr', {},
+      el('td', {}, `${x.height}p`),
+      el('td', {}, x.fps ? `${x.fps} fps` : '-'),
+      el('td', {}, `${x.vcodec}${x.dynamicRange && x.dynamicRange !== 'SDR' ? ` · ${x.dynamicRange}` : ''}`),
+      el('td', {}, x.size ? fmtMB(x.size / 1048576) : '?'),
+      el('td', {}, fmtMB(estimateMB(preset, x, info.duration)))));
+    box.replaceChildren(el('div', { class: 'info-box' },
+      el('div', { class: 'info-head' },
+        info.thumbnail ? el('img', { src: info.thumbnail, alt: '' }) : null,
+        el('div', {}, el('b', {}, info.title), el('div', { class: 'muted' }, [info.uploader, info.site, fmtSecs(info.duration)].filter(Boolean).join(' · ')))),
+      el('table', { class: 'info-table' },
+        el('tr', {}, el('th', {}, 'Resolução'), el('th', {}, 'Quadros'), el('th', {}, 'Codec no site'), el('th', {}, 'Download'), el('th', {}, `Arquivo final (${label})`)),
+        rows),
+      el('p', { class: 'hint' }, 'Tamanho final é uma estimativa. Codec no site: avc1 = H.264, vp9/vp09 = VP9, av01 = AV1. Mude o formato acima e clique de novo para ver outra estimativa.')));
+  } catch (err) {
+    box.replaceChildren(el('p', { class: 'err-text info-box' }, err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')));
+  }
+});
+
+// ---------- momentos e clipes ----------
+
+async function setMomentsFile(file) {
+  state.momentsFile = file;
+  $('#momentsFile').textContent = file;
+  $('#momentsResult').replaceChildren();
+  const existing = await api.moments.load(file);
+  if (existing) renderMoments(existing);
+}
+setupDrop('momentsDrop', setMomentsFile);
+$('#momentsPick').addEventListener('click', async () => {
+  const f = await api.dialog.video();
+  if (f) setMomentsFile(f);
+});
+
+$('#momentsRun').addEventListener('click', async () => {
+  if (!state.momentsFile) { toast('Escolha um vídeo primeiro.', true); return; }
+  if (!(await ensureTools())) return;
+  const s = state.settings;
+  await api.jobs.add('moments', {
+    file: state.momentsFile, title: basename(state.momentsFile),
+    sensitivity: s.momentSensitivity, before: s.momentBefore, after: s.momentAfter, max: s.momentMax,
+  });
+  $('#momentsResult').replaceChildren(el('p', { class: 'muted result' }, 'Ouvindo o áudio... acompanhe em Atividades, à direita.'));
+});
+
+$('#clipsRun').addEventListener('click', async () => {
+  if (!state.momentsFile) { toast('Escolha um vídeo primeiro.', true); return; }
+  const text = $('#clipRanges').value.trim();
+  if (!text) { toast('Digite pelo menos um trecho (ex.: 12:30-12:50).', true); return; }
+  if (!(await ensureTools())) return;
+  await api.jobs.add('clips', {
+    file: state.momentsFile, title: basename(state.momentsFile), text,
+    mode: $('#clipMode').value, vertical: $('#clipVertical').value,
+  });
+  toast('Recortando... acompanhe em Atividades.');
+});
+
+function loudnessChart(r) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const W = 1000;
+  const H = 120;
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  const curve = r.curve || [];
+  const min = Math.min(...curve);
+  const max = Math.max(...curve);
+  const y = (v) => H - ((v - min) / (max - min || 1)) * (H - 10) - 2;
+  const pts = curve.map((v, i) => `${((i / Math.max(1, curve.length - 1)) * W).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const poly = document.createElementNS(NS, 'polyline');
+  poly.setAttribute('points', pts);
+  poly.setAttribute('fill', 'none');
+  poly.setAttribute('stroke', '#6b6b75');
+  poly.setAttribute('stroke-width', '1.2');
+  svg.append(poly);
+  for (const m of r.moments) {
+    const rect = document.createElementNS(NS, 'rect');
+    rect.setAttribute('x', ((m.start / r.duration) * W).toFixed(1));
+    rect.setAttribute('width', Math.max(2, ((m.end - m.start) / r.duration) * W).toFixed(1));
+    rect.setAttribute('y', '0');
+    rect.setAttribute('height', String(H));
+    rect.setAttribute('fill', 'rgba(255,90,78,0.25)');
+    const t = document.createElementNS(NS, 'title');
+    t.textContent = `Momento ${m.index} · ${clock(m.peak)}`;
+    rect.append(t);
+    svg.append(rect);
+  }
+  return el('div', { class: 'chart' }, svg,
+    el('div', { class: 'axis' }, el('span', {}, '0:00'), el('span', {}, 'linha = volume · faixas vermelhas = momentos (com o tempo antes/depois)'), el('span', {}, fmtSecs(r.duration))));
+}
+
+function renderMoments(r) {
+  if (!r) return;
+  state.moments = r;
+  if (r.file !== state.momentsFile) {
+    state.momentsFile = r.file;
+    $('#momentsFile').textContent = r.file;
+  }
+  const ex = r.exports || {};
+  const checks = new Map();
+  const list = r.moments.map((m) => {
+    const cb = el('input', { type: 'checkbox', checked: true });
+    checks.set(m.index, cb);
+    return el('label', { class: 'moment' }, cb,
+      el('b', {}, `#${m.index}`),
+      el('span', { class: 'mono' }, clock(m.peak)),
+      el('span', { class: 'muted' }, `clipe ${clock(m.start)} → ${clock(m.end)}`),
+      el('span', { class: 'meter' }, el('span', { style: `width:${Math.round(m.intensity * 100)}%` })));
+  });
+  const selected = () => r.moments.filter((m) => checks.get(m.index).checked);
+  const vertical = el('select', { style: 'width:auto' },
+    el('option', { value: '' }, 'Formato original'),
+    el('option', { value: 'blur' }, 'Vertical com fundo desfocado'),
+    el('option', { value: 'crop' }, 'Vertical cortando o centro'));
+  const box = el('div', { class: 'result' },
+    el('h3', {}, r.moments.length ? `${r.moments.length} momento(s) em ${basename(r.file)}` : 'Nenhum momento encontrado. Tente aumentar a sensibilidade.'),
+    loudnessChart(r),
+    r.moments.length ? el('div', { class: 'moments' }, list) : null,
+    r.moments.length ? el('div', { class: 'export-row' },
+      el('button', {
+        class: 'btn primary',
+        onclick: () => {
+          const sel = selected();
+          if (!sel.length) { toast('Selecione pelo menos um momento.', true); return; }
+          api.jobs.add('clips', {
+            file: r.file, title: `${sel.length} momento(s) de ${basename(r.file)}`, mode: state.settings.clipMode, vertical: vertical.value,
+            ranges: sel.map((m) => ({ start: m.start, end: m.end, name: `momento ${m.index}` })),
+          });
+          toast('Recortando os momentos...');
+        },
+      }, 'Recortar selecionados'),
+      vertical,
+      ex.xml ? el('button', { class: 'btn', onclick: () => api.shell.reveal(ex.xml) }, 'Marcadores XML (Premiere / DaVinci)') : null,
+      ...(ex.xml ? editorButtons(ex.xml, false) : []),
+      ex.edl ? el('button', { class: 'btn', onclick: () => api.shell.reveal(ex.edl) }, 'EDL (DaVinci)') : null,
+      ex.csv ? el('button', { class: 'btn', onclick: () => api.shell.open(ex.csv) }, 'Lista (CSV)') : null,
+      el('button', {
+        class: 'btn',
+        onclick: () => {
+          $('#clipRanges').value = selected().map((m) => `${clock(m.start)}-${clock(m.end)}`).join('\n');
+          toast('Trechos copiados para "Recortar trechos", abaixo. Ajuste e clique em Recortar.');
+        },
+      }, 'Editar trechos manualmente')) : null);
+  $('#momentsResult').replaceChildren(box);
+}
+
+// ---------- transcrição ----------
+
+async function loadModels() {
+  const models = await api.transcript.models();
+  const sel = $('#transcribeModel');
+  sel.replaceChildren(...models.map((m) => el('option', { value: m.id }, `${m.label}${m.installed ? ' · baixado' : ''}`)));
+  sel.value = state.settings.transcribeModel;
+}
+$('#transcribeModel').addEventListener('change', (e) => saveSetting({ transcribeModel: e.target.value }));
+
+async function setTranscriptFile(file) {
+  state.transcriptFile = file;
+  $('#transcriptFile').textContent = file;
+  $('#transcriptRun').disabled = false;
+  $('#transcriptResult').replaceChildren();
+  const existing = await api.transcript.load(file);
+  if (existing) renderTranscript(existing);
+}
+setupDrop('transcriptDrop', setTranscriptFile);
+$('#transcriptPick').addEventListener('click', async () => {
+  const f = await api.dialog.video();
+  if (f) setTranscriptFile(f);
+});
+
+$('#transcriptRun').addEventListener('click', async () => {
+  if (!state.transcriptFile || !(await ensureTools())) return;
+  await api.jobs.add('transcribe', {
+    file: state.transcriptFile, title: basename(state.transcriptFile),
+    language: $('#transcribeLanguage').value, model: $('#transcribeModel').value,
+  });
+  $('#transcriptResult').replaceChildren(el('p', { class: 'muted result' }, 'Transcrevendo... acompanhe em Atividades. Na primeira vez o modelo é baixado.'));
+});
+
+function normalize(t) {
+  return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+function renderTranscript(r) {
+  if (!r) return;
+  state.transcript = r;
+  if (r.file !== state.transcriptFile) {
+    state.transcriptFile = r.file;
+    $('#transcriptFile').textContent = r.file;
+    $('#transcriptRun').disabled = false;
+  }
+  const search = el('input', { placeholder: 'Buscar uma palavra ou frase (ex.: prometo, gol, obrigado)' });
+  const count = el('span', { class: 'muted' });
+  const list = el('div', { class: 'segments' });
+  let hits = r.segments;
+
+  const highlight = (text, q) => {
+    if (!q) return [text];
+    const nt = normalize(text);
+    const out = [];
+    let i = 0;
+    let j;
+    while ((j = nt.indexOf(q, i)) >= 0) {
+      out.push(text.slice(i, j), el('mark', {}, text.slice(j, j + q.length)));
+      i = j + q.length;
+    }
+    out.push(text.slice(i));
+    return out;
+  };
+  const draw = () => {
+    const q = normalize(search.value.trim());
+    hits = q ? r.segments.filter((sg) => normalize(sg.text).includes(q)) : r.segments;
+    count.textContent = q ? `${hits.length} trecho(s) encontrado(s)` : `${r.segments.length} trechos`;
+    list.replaceChildren(...hits.slice(0, 1000).map((sg) => el('div', { class: 'segment' },
+      el('span', { class: 'mono' }, clock(sg.start)),
+      el('span', {}, highlight(sg.text, q)))));
+  };
+  search.addEventListener('input', draw);
+
+  const box = el('div', { class: 'result' },
+    el('h3', {}, `Transcrição: ${basename(r.file)}`),
+    el('div', { class: 'row' }, search),
+    el('div', { class: 'export-row' },
+      count,
+      el('button', {
+        class: 'btn',
+        onclick: async () => {
+          const q = search.value.trim();
+          if (!q) { toast('Busque uma palavra primeiro.', true); return; }
+          if (!hits.length) { toast('Nada encontrado para exportar.', true); return; }
+          try {
+            const res = await api.transcript.exportHits(r.file, q, hits.map((h) => ({ start: h.start, end: h.end, text: h.text })));
+            api.shell.reveal(res.xml);
+            toast('Marcadores da busca exportados (XML e EDL).');
+          } catch (err) {
+            toast(`Erro ao exportar: ${err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`, true);
+          }
+        },
+      }, 'Exportar marcadores da busca'),
+      el('button', {
+        class: 'btn',
+        onclick: () => {
+          if (!search.value.trim() || !hits.length) { toast('Busque algo primeiro: os trechos encontrados viram clipes.', true); return; }
+          api.jobs.add('clips', {
+            file: r.file, title: `"${search.value.trim()}" em ${basename(r.file)}`, mode: state.settings.clipMode,
+            ranges: hits.map((h, i) => ({ start: Math.max(0, h.start - 1), end: h.end + 1, name: `fala ${i + 1}` })),
+          });
+          toast('Recortando os trechos encontrados...');
+        },
+      }, 'Recortar trechos encontrados'),
+      el('button', { class: 'btn', onclick: () => api.shell.open(r.txt) }, 'Texto completo'),
+      el('button', { class: 'btn', onclick: () => api.shell.reveal(r.srt) }, 'Legenda .srt')),
+    list);
+  draw();
+  $('#transcriptResult').replaceChildren(box);
+}
+
+// ---------- ferramentas novas ----------
+
+$('#verticalRun').addEventListener('click', () => toolJob('vertical', { style: $('#verticalStyle').value }));
+$('#beatsRun').addEventListener('click', () => toolJob('beats', {}));
 
 // ---------- atualização do RefLab ----------
 
@@ -606,4 +1078,6 @@ $('#updateBoxBtn').addEventListener('click', installUpdate);
     renderJob(job);
   }
   ensureTools();
+  state.editors = await api.editors.list().catch(() => []);
+  checkClipboard();
 })();

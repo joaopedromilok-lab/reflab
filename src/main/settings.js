@@ -27,6 +27,13 @@ function init(dir, downloadsDir) {
     lastUpdateCheck: 0,
     sceneThreshold: 0.3,
     minShot: 0.3,
+    momentSensitivity: 8,
+    momentBefore: 10,
+    momentAfter: 5,
+    momentMax: 30,
+    clipMode: 'precise',
+    transcribeLanguage: 'pt',
+    transcribeModel: 'small',
   };
   store = jsonStore(path.join(dir, 'ajustes.json'), {});
 }

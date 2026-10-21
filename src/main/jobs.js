@@ -9,6 +9,10 @@ const tools = require('./tools');
 const media = require('./media');
 const study = require('./study');
 const history = require('./history');
+const clips = require('./clips');
+const audio = require('./audio');
+const moments = require('./moments');
+const transcribe = require('./transcribe');
 
 const events = new EventEmitter();
 const jobs = new Map();
@@ -23,6 +27,11 @@ const KIND_LABEL = {
   proxy: 'Gerar proxy',
   frameAt: 'Extrair frame',
   framesEvery: 'Extrair frames',
+  moments: 'Detector de momentos',
+  clips: 'Recortar trechos',
+  vertical: 'Versão vertical',
+  transcribe: 'Transcrição',
+  beats: 'Marcar batidas',
 };
 
 function snapshot(job) {
@@ -196,7 +205,7 @@ function outputTemplate(o, playlist) {
   else if (o.nameTemplate === 'channel_title') name = '%(uploader,channel|Desconhecido).50B - %(title).140B';
   else name = '%(title).180B';
   if (playlist) name = `%(playlist_index|0)03d - ${name}`;
-  if (o.trimStart || o.trimEnd) name += ' (trecho)';
+  if (o.sections) name += ' (trecho %(section_start)d-%(section_end)ds)';
   return `${folder}${name}.%(ext)s`;
 }
 
@@ -223,6 +232,7 @@ function ytdlpBaseArgs(o) {
     '--js-runtimes', `deno:${tools.toolPath('deno')}`,
   ];
   if (o.cookiesBrowser) args.push('--cookies-from-browser', o.cookiesBrowser);
+  if (o.videoPassword) args.push('--video-password', o.videoPassword);
   return args;
 }
 
@@ -244,10 +254,9 @@ async function handleDownload(job, ctx) {
     playlist ? '--yes-playlist' : '--no-playlist',
   ];
   if (playlist) args.push('--ignore-errors');
-  if (o.trimStart || o.trimEnd) {
-    const s = study.parseTime(o.trimStart) || 0;
-    const e = study.parseTime(o.trimEnd);
-    args.push('--download-sections', `*${s}-${e === null ? 'inf' : e}`, '--force-keyframes-at-cuts');
+  if (o.sections) {
+    for (const r of clips.parseRanges(o.sections, study.parseTime)) args.push('--download-sections', `*${r.start}-${r.end}`);
+    args.push('--force-keyframes-at-cuts');
   }
   if (o.thumbnail) args.push('--write-thumbnail', '--convert-thumbnails', 'jpg');
   args.push('--', url);
@@ -375,6 +384,52 @@ async function downloadSubtitles(url, file, o, ctx) {
   if (r.code !== 0) throw new Error(r.stderr.trim().split(/\r?\n/).pop());
 }
 
+// Informações do vídeo antes de baixar: título, duração e resoluções disponíveis.
+async function fetchInfo(url, o = {}) {
+  const clean = cleanUrl(url);
+  const args = [...ytdlpBaseArgs(o), '-J', '--no-playlist', '--flat-playlist', '--', clean];
+  const p = start(tools.toolPath('yt-dlp'), args, { keepAll: true });
+  const r = await p.promise;
+  if (r.code !== 0) {
+    const err = r.stderr.split(/\r?\n/).filter((l) => /^ERROR:/.test(l)).pop() || r.stderr.trim().split(/\r?\n/).pop();
+    throw new Error(friendlyError((err || 'Não foi possível ler o link').replace(/^ERROR:\s*/, '')));
+  }
+  const j = JSON.parse(r.stdout);
+  if (j._type === 'playlist') {
+    return { title: j.title, uploader: j.uploader || j.channel || '', isPlaylist: true, count: (j.entries || []).length };
+  }
+  const formats = j.formats || [];
+  const size = (f) => f.filesize || f.filesize_approx || (f.tbr && j.duration ? (f.tbr * 1000 / 8) * j.duration : 0);
+  const audio = formats.filter((f) => f.vcodec === 'none' && f.acodec && f.acodec !== 'none')
+    .sort((a, b) => (b.abr || b.tbr || 0) - (a.abr || a.tbr || 0))[0];
+  const byHeight = new Map();
+  for (const f of formats) {
+    if (!f.height || !f.vcodec || f.vcodec === 'none') continue;
+    const cur = byHeight.get(f.height);
+    if (!cur || (f.tbr || 0) > (cur.tbr || 0)) byHeight.set(f.height, f);
+  }
+  const heights = [...byHeight.values()]
+    .sort((a, b) => b.height - a.height)
+    .map((f) => ({
+      height: f.height,
+      width: f.width,
+      fps: f.fps || null,
+      vcodec: String(f.vcodec).split('.')[0],
+      dynamicRange: f.dynamic_range || 'SDR',
+      size: size(f) + (f.acodec === 'none' && audio ? size(audio) : 0),
+    }));
+  return {
+    title: j.title,
+    uploader: j.uploader || j.channel || '',
+    duration: j.duration || 0,
+    thumbnail: j.thumbnail,
+    site: j.extractor_key,
+    isPlaylist: false,
+    heights,
+    audioSize: audio ? size(audio) : 0,
+  };
+}
+
 async function writeInfoTxt(item, file, o) {
   const date = item.upload_date ? `${item.upload_date.slice(6, 8)}/${item.upload_date.slice(4, 6)}/${item.upload_date.slice(0, 4)}` : '-';
   const dur = item.duration ? `${Math.floor(item.duration / 60)}:${String(Math.round(item.duration % 60)).padStart(2, '0')}` : '-';
@@ -438,6 +493,57 @@ const HANDLERS = {
     return { output: out };
   },
 
+  async moments(job, ctx) {
+    patch(job, { phase: 'Ouvindo o áudio e procurando momentos...' });
+    const r = await moments.detect(job.params.file, { ...job.params, ...ctx });
+    patch(job, { phase: `${r.moments.length} momento(s) encontrado(s)` });
+    return r;
+  },
+
+  async clips(job, ctx) {
+    const ranges = Array.isArray(job.params.ranges) ? job.params.ranges : clips.parseRanges(job.params.text, study.parseTime);
+    patch(job, { phase: `Recortando ${ranges.length} trecho(s)...` });
+    const r = await clips.cutClips(job.params.file, ranges, {
+      mode: job.params.mode, vertical: job.params.vertical, ...ctx, onClip: (f) => job.files.push(f),
+    });
+    job.files = [r.outDir];
+    return r;
+  },
+
+  async vertical(job, ctx) {
+    patch(job, { phase: 'Gerando versão vertical 9:16...' });
+    const out = await clips.makeVertical(job.params.file, { style: job.params.style, ...ctx });
+    job.files.push(out);
+    return { output: out };
+  },
+
+  async transcribe(job, ctx) {
+    const r = await transcribe.transcribe(job.params.file, {
+      language: job.params.language, model: job.params.model, ...ctx,
+      onPhase: (phase) => patch(job, { phase, progress: 0 }),
+    });
+    job.files.push(r.srt);
+    patch(job, { phase: `${r.segments.length} trechos transcritos` });
+    return r;
+  },
+
+  async beats(job, ctx) {
+    patch(job, { phase: 'Ouvindo a música e marcando as batidas...' });
+    const info = await media.probe(job.params.file);
+    if (!info.hasAudio) throw new Error('O arquivo não tem áudio.');
+    const b = await audio.detectBeats(job.params.file, { duration: info.duration, ...ctx });
+    if (!b.beats.length) throw new Error('Não encontrei batidas (o áudio é muito curto ou não tem ritmo marcado).');
+    const name = path.basename(job.params.file, path.extname(job.params.file));
+    const marks = b.beats.map((t, i) => ({ t, name: `Batida ${i + 1}` }));
+    const dir = path.dirname(job.params.file);
+    const xml = await study.writeMarkersXml(job.params.file, info, `${name} - ${b.bpm} BPM`, marks,
+      path.join(dir, `${name} - Batidas ${Math.round(b.bpm)} BPM (Premiere e DaVinci).xml`));
+    const edl = await study.writeMarkersEdl(name, info.fps, marks, path.join(dir, `${name} - Batidas (DaVinci).edl`), 'Green');
+    job.files.push(xml);
+    patch(job, { phase: `${b.bpm} BPM · ${b.beats.length} batidas marcadas` });
+    return { bpm: b.bpm, count: b.beats.length, xml, edl };
+  },
+
   async framesEvery(job, ctx) {
     patch(job, { phase: `Extraindo um frame a cada ${job.params.seconds}s...` });
     const dir = await study.framesEvery(job.params.file, job.params.seconds, ctx);
@@ -446,4 +552,6 @@ const HANDLERS = {
   },
 };
 
-module.exports = { events, add, list, cancel, remove, retry, clearFinished, cancelAll, setConcurrency, cleanUrl };
+module.exports = {
+  events, add, list, cancel, remove, retry, clearFinished, cancelAll, setConcurrency, cleanUrl, fetchInfo,
+};
