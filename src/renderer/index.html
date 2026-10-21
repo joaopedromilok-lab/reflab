@@ -9,15 +9,24 @@
 <body>
   <div class="app">
     <aside class="sidebar">
-      <div class="brand"><span class="logo">●</span> RefLab</div>
+      <div class="brand"><span class="logo" aria-hidden="true">R</span><span>RefLab</span></div>
       <nav>
-        <button class="nav active" data-view="download"><span>⬇</span> Baixar</button>
-        <button class="nav" data-view="study"><span>✂</span> Estudar edição</button>
-        <button class="nav" data-view="moments"><span>⚡</span> Momentos e clipes</button>
-        <button class="nav" data-view="transcript"><span>❝</span> Transcrição</button>
-        <button class="nav" data-view="tools"><span>⚙</span> Ferramentas</button>
-        <button class="nav" data-view="history"><span>☰</span> Biblioteca</button>
-        <button class="nav" data-view="settings"><span>✦</span> Ajustes</button>
+        <div class="nav-group">
+          <div class="nav-group-label">REFERÊNCIAS</div>
+          <button class="nav active" data-view="download" aria-current="page"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg> Baixar</button>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">ESTUDAR E EDITAR</div>
+          <button class="nav" data-view="study"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6 4 4M4 20l4-.8L19.5 7.7a2.1 2.1 0 0 0-3-3L5 16.2 4 20Z"/><path d="m12 8 4 4"/></svg> Estudar edição</button>
+          <button class="nav" data-view="moments"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m13 2-3 8h6l-5 12 1-9H7l6-11Z"/></svg> Momentos e clipes</button>
+          <button class="nav" data-view="transcript"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h8M8 11h8M8 15h5"/><path d="M5 3h14a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-8l-5 3v-3H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/></svg> Transcrição</button>
+          <button class="nav" data-view="tools"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/><path d="m19.4 15 .1.1a1.7 1.7 0 0 1-2.4 2.4l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a1.7 1.7 0 0 1-3.4 0v-.2a1.7 1.7 0 0 0-2.9-1.2l-.1.1a1.7 1.7 0 0 1-2.4-2.4l.1-.1a1.7 1.7 0 0 0-1.2-2.9H4a1.7 1.7 0 0 1 0-3.4h.2a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a1.7 1.7 0 0 1 2.4-2.4l.1.1a1.7 1.7 0 0 0 2.9-1.2V2a1.7 1.7 0 0 1 3.4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a1.7 1.7 0 0 1 2.4 2.4l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a1.7 1.7 0 0 1 0 3.4h-.2a1.7 1.7 0 0 0-1.2 2.9Z"/></svg> Ferramentas</button>
+        </div>
+        <div class="nav-group">
+          <div class="nav-group-label">ORGANIZAÇÃO</div>
+          <button class="nav" data-view="history"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="2" cy="6" r=".5"/><circle cx="2" cy="12" r=".5"/><circle cx="2" cy="18" r=".5"/></svg> Biblioteca</button>
+          <button class="nav" data-view="settings"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4m0-12.8L17 7M7 17l-1.4 1.4"/><circle cx="12" cy="12" r="4"/></svg> Ajustes</button>
+        </div>
       </nav>
       <div class="update-box hidden" id="updateBox">
         <b>Nova versão disponível</b>
@@ -32,7 +41,7 @@
       <section class="view active" id="view-download">
         <header class="view-head">
           <h1>Baixar referências</h1>
-          <p>Cole um ou mais links (um por linha). YouTube, Instagram, TikTok, Vimeo, X e muitos outros.</p>
+          <p>Prepare vídeos de YouTube, Instagram, TikTok, Vimeo, X e outras fontes para editar.</p>
         </header>
 
         <div class="banner hidden" id="clipBanner">
@@ -43,84 +52,113 @@
           </div>
         </div>
 
-        <textarea id="urls" rows="3" placeholder="https://www.youtube.com/watch?v=..."></textarea>
-        <div class="row" style="margin-top:8px">
-          <button class="btn small" id="infoBtn">Ver informações do vídeo</button>
-          <span class="muted small-text">resolução, fps, duração e tamanho estimado antes de baixar</span>
-        </div>
-        <div id="urlInfo"></div>
-
-        <h3 class="label">Formato para edição</h3>
-        <div class="presets" id="presets"></div>
-        <p class="hint" id="presetHint"></p>
-
-        <div class="grid2">
-          <div class="field">
-            <label>Resolução máxima</label>
-            <select id="maxHeight">
-              <option value="0">Máxima disponível</option>
-              <option value="2160">4K (2160p)</option>
-              <option value="1440">1440p</option>
-              <option value="1080">1080p</option>
-              <option value="720">720p</option>
-              <option value="480">480p</option>
-            </select>
+        <section class="download-step">
+          <div class="step-heading">
+            <span class="step-index">01</span>
+            <div><h2>Cole os links</h2><p>Um por linha. Você pode adicionar vários de uma vez.</p></div>
           </div>
-          <div class="field">
-            <label>Baixar só trechos <span class="muted">(opcional)</span></label>
-            <input id="sections" placeholder="ex.: 1:20-1:45, 3:00-3:30">
-            <p class="hint">Um ou vários trechos separados por vírgula. Cada um vira um arquivo.</p>
+          <div class="url-entry">
+            <label for="urls">Links dos vídeos</label>
+            <textarea id="urls" rows="3" placeholder="Cole um ou mais links aqui, um por linha"></textarea>
+            <div class="row url-tools">
+              <button class="btn small" id="infoBtn">Ver informações do vídeo</button>
+              <span class="muted small-text">Confira resolução, fps, duração e tamanho antes de baixar</span>
+            </div>
           </div>
-        </div>
+          <div id="urlInfo"></div>
+        </section>
 
-        <div class="field">
-          <label>Pasta de destino</label>
-          <div class="row">
-            <div class="path" id="outputDir"></div>
-            <button class="btn" id="pickOutput">Alterar</button>
+        <section class="download-step">
+          <div class="step-heading">
+            <span class="step-index">02</span>
+            <div><h2>Escolha o formato</h2><p>Selecione um preset e ajuste a qualidade ou os trechos.</p></div>
           </div>
-        </div>
+          <div class="presets" id="presets" aria-label="Formato de saída"></div>
+          <p class="hint" id="presetHint"></p>
+          <p class="preset-note hidden" id="audioPresetNote" aria-live="polite">Formato de áudio: resolução não se aplica. Proxy, legendas e miniatura ficam ocultos porque exigem vídeo.</p>
 
-        <div class="grid2">
-          <div class="field">
-            <label>Organizar em subpastas</label>
-            <select id="organize">
-              <option value="none">Não organizar</option>
-              <option value="date">Por data</option>
-              <option value="channel">Por canal / autor</option>
-              <option value="project">Por projeto</option>
-            </select>
-            <input id="projectName" class="hidden" placeholder="Nome do projeto (ex.: Clipe da banda X)">
+          <div class="grid2">
+            <div class="field" id="resolutionField">
+              <label>Resolução máxima</label>
+              <select id="maxHeight">
+                <option value="0">Máxima disponível</option>
+                <option value="2160">4K (2160p)</option>
+                <option value="1440">1440p</option>
+                <option value="1080">1080p</option>
+                <option value="720">720p</option>
+                <option value="480">480p</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Baixar só trechos <span class="muted">(opcional)</span></label>
+              <input id="sections" placeholder="ex.: 1:20-1:45, 3:00-3:30">
+              <p class="hint" id="sectionsHint">Separe vários trechos por vírgula. Cada um vira um arquivo.</p>
+            </div>
           </div>
-          <div class="field">
-            <label>Nome do arquivo</label>
-            <select id="nameTemplate">
-              <option value="title">Título do vídeo</option>
-              <option value="title_id">Título [ID]</option>
-              <option value="channel_title">Canal - Título</option>
-            </select>
-          </div>
-        </div>
+        </section>
 
-        <details class="extras" open>
-          <summary>Extras</summary>
-          <div class="checks">
-            <label><input type="checkbox" id="proxy"> Gerar proxy (ProRes Proxy) para editar 4K sem travar</label>
-            <label><input type="checkbox" id="subtitles"> Baixar legendas (.srt)</label>
-            <label><input type="checkbox" id="thumbnail"> Salvar miniatura em alta</label>
-            <label><input type="checkbox" id="infoTxt"> Salvar .txt com link e crédito do autor</label>
-            <label><input type="checkbox" id="playlist"> Se o link for de playlist, baixar a playlist inteira</label>
-            <label><input type="checkbox" id="keepOriginal"> Manter também o arquivo original (antes da conversão)</label>
-            <label><input type="checkbox" id="normalizeAudio"> Normalizar volume (só nos formatos de áudio)</label>
+        <section class="download-step">
+          <div class="step-heading">
+            <span class="step-index">03</span>
+            <div><h2>Escolha onde salvar</h2><p>Defina a pasta e como organizar os arquivos.</p></div>
           </div>
           <div class="field">
-            <label>Senha do vídeo <span class="muted">(Vimeo e outros vídeos protegidos)</span></label>
-            <input id="videoPassword" type="password" placeholder="deixe em branco se o vídeo não tiver senha" autocomplete="off">
+            <label>Pasta de destino</label>
+            <div class="output-location">
+              <svg class="folder-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h4l2 2h7A2.5 2.5 0 0 1 21 9.5v8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-10Z"/><path d="M3.5 10h17"/></svg>
+              <div class="output-path-wrap">
+                <b id="outputFolderName">Pasta de downloads</b>
+                <div class="path" id="outputDir"></div>
+              </div>
+              <div class="row output-actions">
+                <button class="btn small" id="openOutput">Abrir pasta</button>
+                <button class="btn small" id="pickOutput">Alterar</button>
+              </div>
+            </div>
           </div>
-        </details>
 
-        <div class="actions">
-          <button class="btn primary big" id="startDownload">Baixar</button>
+          <div class="grid2">
+            <div class="field">
+              <label>Organizar em subpastas</label>
+              <select id="organize">
+                <option value="none">Não organizar</option>
+                <option value="date">Por data</option>
+                <option value="channel">Por canal / autor</option>
+                <option value="project">Por projeto</option>
+              </select>
+              <input id="projectName" class="hidden" placeholder="Nome do projeto (ex.: Clipe da banda X)">
+            </div>
+            <div class="field">
+              <label>Nome do arquivo</label>
+              <select id="nameTemplate">
+                <option value="title">Título do vídeo</option>
+                <option value="title_id">Título [ID]</option>
+                <option value="channel_title">Canal - Título</option>
+              </select>
+            </div>
+          </div>
+
+          <details class="extras">
+            <summary><span>Mais opções</span><span class="extras-count">legendas, proxy e outros</span></summary>
+            <div class="checks">
+              <label id="proxyOption"><input type="checkbox" id="proxy"> Criar proxy leve para edição</label>
+              <label id="subtitlesOption"><input type="checkbox" id="subtitles"> Baixar legendas (.srt)</label>
+              <label id="thumbnailOption"><input type="checkbox" id="thumbnail"> Salvar miniatura</label>
+              <label id="infoTxtOption"><input type="checkbox" id="infoTxt"> Salvar texto com link e crédito</label>
+              <label><input type="checkbox" id="playlist"> Baixar a playlist inteira quando o link for de uma playlist</label>
+              <label><input type="checkbox" id="keepOriginal"> Guardar também o arquivo original</label>
+              <label id="normalizeAudioOption"><input type="checkbox" id="normalizeAudio"> Ajustar o volume do áudio</label>
+            </div>
+            <div class="field">
+              <label>Senha do vídeo <span class="muted">(Vimeo e outros vídeos protegidos)</span></label>
+              <input id="videoPassword" type="password" placeholder="deixe em branco se o vídeo não tiver senha" autocomplete="off">
+            </div>
+          </details>
+        </section>
+
+        <div class="actions download-actions">
+          <div class="download-queue-summary"><span class="queue-dot" id="downloadQueueDot"></span><span id="downloadQueueCount">Sua fila está vazia.</span></div>
+          <button class="btn primary big" id="startDownload">Iniciar download</button>
         </div>
       </section>
 
@@ -375,7 +413,7 @@
 
     <aside class="activity">
       <div class="activity-head">
-        <h2>Atividades</h2>
+        <div class="activity-title"><h2>Atividades</h2><span class="activity-count" id="activityCount">0 ativas</span></div>
         <button class="link" id="clearFinished">Limpar concluídas</button>
       </div>
       <div id="jobList" class="jobs"><p class="empty">Nada por aqui ainda.</p></div>
