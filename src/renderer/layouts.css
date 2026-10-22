@@ -155,3 +155,71 @@ body.compact .view.has-result #transcriptRun { background: var(--panel-2); borde
 body.compact .tr-options .actions { margin-top: 12px; }
 body.compact .tr-options .grid2 { margin-top: 0; }
 body:not(.compact) .tr-options > summary { display: none; }
+
+/* ---------- ajustes dos especialistas ---------- */
+
+/* Contraste: botão principal mais escuro (texto branco ~4,6:1) e cinzas mais claros no tema escuro */
+:root:not([data-theme="light"]) body.compact { --muted: #a3a3ad; }
+body.compact .btn.primary { background: #d93a30; border-color: #d93a30; }
+body.compact .btn.primary:hover { background: #e4483e; border-color: #e4483e; }
+body.compact .nav-group-label, body.compact .field > label, body.compact .label { color: var(--muted); }
+
+/* Alvos de clique maiores */
+body.compact .btn.small { min-height: 32px; padding: 6px 12px; font-size: 12.5px; }
+
+/* Números da análise em 4 colunas, mais compactos */
+body.compact .stats { grid-template-columns: repeat(4, 1fr); }
+body.compact .stat { padding: 9px 12px; }
+body.compact .stat b { font-size: 20px; }
+
+/* Gráfico de cortes mais baixo e suave */
+body.compact .chart svg { height: 72px; }
+body.compact .chart svg rect { fill-opacity: .5; }
+body.compact .chart svg rect:hover { fill-opacity: 1; }
+
+/* Transcrição: player menor e métricas numa linha */
+body.compact .player { max-height: 250px; }
+.metrics-box { margin: 10px 0 0; }
+.metrics-box > summary { display: flex; justify-content: space-between; gap: 12px; cursor: pointer; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); font-size: 13px; list-style: none; }
+.metrics-box > summary::-webkit-details-marker { display: none; }
+.metrics-box[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.metrics-box > summary .link { white-space: nowrap; }
+body:not(.compact) .metrics-box > summary { display: none; }
+
+/* Explicações visíveis nas primeiras aberturas */
+body.compact.learning .static-hint { display: block !important; }
+body.compact.learning .info-tip { display: none; }
+
+/* Início: aviso de link copiado e opções de transcrição */
+.home-box .banner { margin: 0; }
+.home-box textarea { font-size: 15px; min-height: 58px; resize: vertical; border-radius: 12px; padding: 12px 14px; }
+.home-tr { display: grid; grid-template-columns: 220px 1fr; gap: 12px; margin-top: 12px; }
+.home-tr .field { margin-top: 0; }
+.intent { min-height: 74px; }
+.intent span { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+#homeSummary .link { font-size: 13px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.recent-grid .empty { grid-column: 1 / -1; text-align: center; padding: 26px; border: 1px dashed var(--line); border-radius: 12px; }
+
+/* Menu: item do vídeo aberto */
+.nav-video { display: none !important; }
+body.layout-b.has-video .nav-video { display: flex !important; }
+.nav-video span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* Barra do vídeo alinhada à coluna de conteúdo */
+body.video-mode .vb-top, body.video-mode .vb-tabs { max-width: 900px; }
+
+/* Biblioteca em grade com status */
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.lib-card { display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow: hidden; }
+.lib-card:hover { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
+.lib-open { display: flex; flex-direction: column; gap: 3px; padding: 0; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.lib-open img, .lib-open .ph { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #222; display: block; margin-bottom: 4px; }
+.lib-open b, .lib-open span { padding: 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-open b { font-size: 13px; }
+.lib-open span { font-size: 12px; }
+.lib-pills { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px; min-height: 22px; }
+.pill { font-size: 11px; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--line); color: var(--muted); }
+.pill.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }
+.pill.on::before { content: "✓ "; }
+.lib-card .tags { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px; }
+.lib-actions { display: flex; gap: 4px; padding: 0 10px; margin-top: auto; }

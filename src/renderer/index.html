@@ -18,6 +18,7 @@
       <nav>
         <div class="nav-group nav-home-group">
           <button class="nav" data-view="home"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg> Início</button>
+          <button class="nav nav-video" data-view="video" id="navVideo"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg> <span id="navVideoText">Vídeo aberto</span></button>
         </div>
         <div class="nav-group">
           <div class="nav-group-label">REFERÊNCIAS</div>
@@ -59,10 +60,32 @@
           <p>Cole um link ou traga um vídeo do computador. Tudo sobre ele fica numa página só.</p>
         </header>
         <div class="home-box" id="homeDrop">
-          <input id="homeInput" placeholder="Cole o link de um vídeo (YouTube, Instagram, TikTok, Vimeo...)">
+          <div class="banner hidden" id="homeClip">
+            <span>Link copiado: <b id="homeClipUrl"></b></span>
+            <div class="row">
+              <button class="btn primary small" id="homeClipUse" type="button">Usar este link</button>
+              <button class="btn small" id="homeClipIgnore" type="button">Ignorar</button>
+            </div>
+          </div>
+          <textarea id="homeInput" rows="2" placeholder="Cole o link de um vídeo (YouTube, Instagram, TikTok, Vimeo...). Vários? Um por linha."></textarea>
           <div class="home-or"><span>ou</span><button class="btn" id="homePick" type="button">Escolher um vídeo do computador</button></div>
         </div>
         <div class="intents" id="homeIntents"></div>
+        <div class="home-tr hidden" id="homeTr">
+          <div class="field">
+            <label>Idioma da fala</label>
+            <select id="homeTrLang">
+              <option value="pt">Português</option>
+              <option value="en">Inglês</option>
+              <option value="es">Espanhol</option>
+              <option value="auto">Detectar automaticamente</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Nomes e palavras difíceis <span class="muted">(opcional)</span></label>
+            <input id="homeTrPrompt" placeholder="Ex.: Ana Beatriz, Rafael, Igreja Matriz de Santa Rita">
+          </div>
+        </div>
         <div class="actions home-actions">
           <button class="btn primary big" id="homeGo" type="button">Começar</button>
           <span class="muted small-text" id="homeSummary"></span>
@@ -227,7 +250,7 @@
             <p class="hint">Evita contar flashes e piscadas como planos.</p>
           </div>
         </div>
-        <div class="actions"><button class="btn primary" id="studyRun" disabled>Analisar cortes</button></div>
+        <div class="actions"><button class="btn primary" id="studyRun" disabled title="Escolha um vídeo primeiro">Analisar cortes</button></div>
         <div id="studyResult"></div>
       </section>
 
@@ -339,7 +362,7 @@
           <p class="hint">Ajuda a IA a escrever certo nomes de pessoas, marcas e lugares.</p>
         </div>
         <div class="field"><label class="check"><input type="checkbox" id="transcribeVad"> Ignorar música e silêncio (recomendado: evita texto inventado em trechos só com música)</label></div>
-        <div class="actions"><button class="btn primary" id="transcriptRun" disabled>Transcrever</button></div>
+        <div class="actions"><button class="btn primary" id="transcriptRun" disabled title="Escolha um arquivo primeiro">Transcrever</button></div>
         <div id="transcriptResult"></div>
       </section>
 
@@ -435,7 +458,8 @@
             <h3>Extrair frames em intervalo</h3>
             <p>Um PNG a cada X segundos: bom para moodboard e referência de cor.</p>
             <div class="row">
-              <input id="frameEvery" placeholder="a cada (s) ex.: 2" value="2">
+              <input id="frameEvery" placeholder="ex.: 2" value="2" style="max-width:90px">
+              <span class="muted">segundos</span>
               <button class="btn primary needs-file" id="framesRun">Extrair</button>
             </div>
           </div>

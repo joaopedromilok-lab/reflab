@@ -181,11 +181,20 @@ async function videoMeta(file) {
   return { hist, analysis, transcript, moments, thumb, title: (hist && hist.title) || basename(file).replace(/\.[^.]+$/, '') };
 }
 
-async function openVideo(file) {
+async function openVideo(file, view = 'video') {
   state.currentVideo = file;
   await Promise.all([setStudyFile(file), setMomentsFile(file), setTranscriptFile(file)]);
   setToolsFile(file);
-  showView('video');
+  showView(view);
+}
+
+// Aba que combina com o que foi pedido no download.
+function viewForJob(job) {
+  const p = job.params || {};
+  if (p.afterTranscribe) return 'transcript';
+  if (p.afterAnalyze) return 'study';
+  if (p.afterMoments) return 'moments';
+  return 'video';
 }
 
 async function renderVideoBar(active) {
@@ -196,7 +205,7 @@ async function renderVideoBar(active) {
   if (state.currentVideo !== file) return;
   bar.replaceChildren(
     el('div', { class: 'vb-top' },
-      el('button', { class: 'link vb-back', type: 'button', onclick: () => { state.currentVideo = null; showView('home'); } }, '← Início'),
+      el('button', { class: 'link vb-back', type: 'button', onclick: () => showView('home') }, '← Início'),
       meta.thumb ? el('img', { src: meta.thumb, alt: '' }) : el('div', { class: 'vb-ph' }),
       el('div', { class: 'vb-title' }, el('b', { title: meta.title }, meta.title), el('span', { class: 'muted', title: file }, file)),
       el('div', { class: 'vb-actions' },
@@ -266,9 +275,11 @@ function updateVideoMode(name) {
   else $('#videoBar').replaceChildren();
   if (name === 'video') renderVideoSummary();
   if (name === 'home') renderHome();
-  // Na página do vídeo, "Início" fica marcado no menu.
+  // Na página do vídeo, o item "vídeo aberto" fica marcado no menu.
+  document.body.classList.toggle('has-video', layoutMode() === 'b' && !!state.currentVideo);
+  if (state.currentVideo) $('#navVideoText').textContent = basename(state.currentVideo).replace(/\.[^.]+$/, '');
   if (inVideo) {
-    for (const b of $$('.nav')) b.classList.toggle('active', b.dataset.view === 'home');
+    for (const b of $$('.nav')) b.classList.toggle('active', b.id === 'navVideo');
   }
   setTimeout(refreshResultState, 300);
 }
@@ -290,7 +301,7 @@ jobCard = function jobCardWithLayout(job) {
   const file = job.files && job.files[0];
   if (layoutMode() === 'b' && job.status === 'done' && file && isVideoFile(file) && job.kind === 'download') {
     const btns = card.querySelector('.btns');
-    if (btns) btns.prepend(el('button', { class: 'btn small primary', onclick: () => openVideo(file) }, 'Abrir no RefLab'));
+    if (btns) btns.prepend(el('button', { class: 'btn small primary', onclick: () => openVideo(file, viewForJob(job)) }, 'Abrir no RefLab'));
   }
   return card;
 };
@@ -324,6 +335,9 @@ function renderIntents() {
 
 function renderHomeSummary() {
   const s = state.settings;
+  $('#homeTr').classList.toggle('hidden', homeIntent !== 'transcribe');
+  $('#homeTrLang').value = $('#transcribeLanguage').value || s.transcribeLanguage || 'pt';
+  if (document.activeElement !== $('#homeTrPrompt')) $('#homeTrPrompt').value = s.transcribePrompt || '';
   let text = '';
   if (homeFile) text = `Arquivo: ${basename(homeFile)}`;
   else if (homeIntent === 'transcribe') {
@@ -371,7 +385,28 @@ homeDrop.addEventListener('drop', (e) => {
   if (f) setHomeFile(api.pathForFile(f));
 });
 $('#homeInput').addEventListener('input', () => { homeFile = null; renderHomeSummary(); });
-$('#homeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#homeGo').click(); });
+$('#homeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('#homeGo').click(); });
+$('#homeTrLang').addEventListener('change', (e) => {
+  $('#transcribeLanguage').value = e.target.value;
+  saveSetting({ transcribeLanguage: e.target.value });
+});
+$('#homeTrPrompt').addEventListener('change', (e) => {
+  $('#transcribePrompt').value = e.target.value;
+  saveSetting({ transcribePrompt: e.target.value });
+});
+
+async function transcribeLink(url) {
+  const s = state.settings;
+  const opts = { ...transcribeOptions(), language: $('#homeTrLang').value, prompt: $('#homeTrPrompt').value };
+  if (s.transcribeUrlMode === 'text') {
+    await api.jobs.add('linkTranscript', { url, title: url, outputDir: s.outputDir, cookiesBrowser: s.cookiesBrowser, ...opts, useYoutubeSubs: s.useYoutubeSubs });
+  } else {
+    await api.jobs.add('download', downloadParams(url, {
+      preset: s.transcribeUrlMode === 'audio' ? 'mp3' : 'h264', maxHeight: 1080, infoTxt: true, normalizeAudio: false,
+      afterTranscribe: { ...opts, useYoutubeSubs: s.useYoutubeSubs },
+    }));
+  }
+}
 
 function downloadParams(url, extra = {}) {
   const s = state.settings;
@@ -398,41 +433,114 @@ function downloadParams(url, extra = {}) {
 }
 
 $('#homeGo').addEventListener('click', async () => {
-  const url = $('#homeInput').value.trim();
+  const urls = $('#homeInput').value.split(/\s+/).map((u) => u.trim()).filter(Boolean);
+  const url = urls[0] || '';
   if (homeFile) {
     const file = homeFile;
     homeFile = null;
     await openVideo(file);
-    if (homeIntent === 'transcribe') { showView('transcript'); $('#transcriptRun').click(); }
+    if (homeIntent === 'transcribe') {
+      $('#transcribeLanguage').value = $('#homeTrLang').value;
+      showView('transcript');
+      $('#transcriptRun').click();
+    }
     if (homeIntent === 'study') { showView('study'); $('#studyRun').click(); }
     if (homeIntent === 'moments') { showView('moments'); $('#momentsRun').click(); }
     return;
   }
-  if (!/^https?:\/\//i.test(url)) { toast('Cole um link (começando com http) ou escolha um vídeo do computador.', true); return; }
+  const links = urls.filter((u) => /^https?:\/\//i.test(u));
+  if (!links.length) { toast('Cole um link (começando com http) ou escolha um vídeo do computador.', true); return; }
   if (!(await ensureTools())) return;
   const s = state.settings;
-  if (homeIntent === 'transcribe') {
-    $('#trUrl').value = url;
-    $('#trUrlRun').click();
-  } else if (homeIntent === 'download') {
-    await api.jobs.add('download', downloadParams(url));
-    toast('Baixando... quando terminar, clique em "Abrir no RefLab" em Atividades.');
-  } else if (homeIntent === 'study') {
-    await api.jobs.add('download', downloadParams(url, {
-      preset: ['wav', 'mp3', 'original'].includes(s.preset) ? 'h264' : s.preset,
-      afterAnalyze: { threshold: s.sceneThreshold, minShot: s.minShot },
-    }));
-    toast('Baixando e depois analisando os cortes...');
-  } else if (homeIntent === 'moments') {
-    await api.jobs.add('download', downloadParams(url, {
-      preset: ['wav', 'mp3', 'original'].includes(s.preset) ? 'h264' : s.preset,
-      afterMoments: { sensitivity: s.momentSensitivity, before: s.momentBefore, after: s.momentAfter, max: s.momentMax },
-    }));
-    toast('Baixando e depois procurando os momentos...');
+  const videoPreset = ['wav', 'mp3', 'original'].includes(s.preset) ? 'h264' : s.preset;
+  for (const link of links) {
+    if (homeIntent === 'transcribe') await transcribeLink(link);
+    else if (homeIntent === 'download') await api.jobs.add('download', downloadParams(link));
+    else if (homeIntent === 'study') {
+      await api.jobs.add('download', downloadParams(link, {
+        preset: videoPreset, afterAnalyze: { threshold: s.sceneThreshold, minShot: s.minShot },
+      }));
+    } else if (homeIntent === 'moments') {
+      await api.jobs.add('download', downloadParams(link, {
+        preset: videoPreset,
+        afterMoments: { sensitivity: s.momentSensitivity, before: s.momentBefore, after: s.momentAfter, max: s.momentMax },
+      }));
+    }
   }
+  const n = links.length > 1 ? `${links.length} links` : 'O link';
+  toast({
+    download: `${n} na fila. Quando terminar, clique em "Abrir no RefLab" em Atividades.`,
+    transcribe: `${n} na fila para transcrever.`,
+    study: `${n}: baixando e depois analisando os cortes.`,
+    moments: `${n}: baixando e depois procurando os momentos.`,
+  }[homeIntent]);
   $('#homeInput').value = '';
+  $('#homeClip').classList.add('hidden');
 });
 $('#homeAll').addEventListener('click', () => showView('history'));
+
+new MutationObserver(() => {
+  const visible = !$('#clipBanner').classList.contains('hidden');
+  $('#homeClip').classList.toggle('hidden', !visible);
+  if (visible) $('#homeClipUrl').textContent = $('#clipUrl').textContent;
+}).observe($('#clipBanner'), { attributes: true, attributeFilter: ['class'] });
+$('#homeClipUse').addEventListener('click', () => {
+  const cur = $('#homeInput').value.trim();
+  $('#homeInput').value = cur ? `${cur}\n${lastClip}` : lastClip;
+  $('#clipBanner').classList.add('hidden');
+  homeFile = null;
+  renderHomeSummary();
+});
+$('#homeClipIgnore').addEventListener('click', () => $('#clipBanner').classList.add('hidden'));
+
+// ---------- Biblioteca em grade com status (layout B) ----------
+
+const statusCache = new Map();
+async function videoStatus(file) {
+  if (statusCache.has(file)) return statusCache.get(file);
+  const [a, t, m] = await Promise.all([api.study.load(file), api.transcript.load(file), api.moments.load(file)]);
+  const st = { cuts: !!a, transcript: !!t, moments: !!m };
+  statusCache.set(file, st);
+  return st;
+}
+api.jobs.onUpdate((job) => { if (job.status === 'done' && job.params && job.params.file) statusCache.delete(job.params.file); });
+
+const baseRenderHistory = renderHistory;
+// eslint-disable-next-line no-global-assign
+renderHistory = function renderHistoryWithLayout() {
+  if (layoutMode() !== 'b' || $('#historyMode').value === 'speech') { baseRenderHistory(); return; }
+  baseRenderHistory(); // filtro de etiquetas e estado vazio
+  const list = $('#historyList');
+  const rows = [...list.querySelectorAll('.hitem')];
+  if (!rows.length) return;
+  const q = $('#historySearch').value.trim().toLowerCase();
+  const items = state.history.filter((h) =>
+    (!state.tagFilter || (h.tags || []).includes(state.tagFilter))
+    && (!q || [h.title, h.uploader, h.site, h.file, (h.tags || []).join(' '), h.notes].join(' ').toLowerCase().includes(q)));
+  const grid = el('div', { class: 'lib-grid' }, items.slice(0, 300).map((h) => {
+    const pills = el('div', { class: 'lib-pills' });
+    if (isVideoFile(h.file)) {
+      videoStatus(h.file).then((st) => {
+        pills.replaceChildren(
+          el('span', { class: `pill${st.cuts ? ' on' : ''}` }, 'Cortes'),
+          el('span', { class: `pill${st.transcript ? ' on' : ''}` }, 'Transcrição'),
+          el('span', { class: `pill${st.moments ? ' on' : ''}` }, 'Momentos'));
+      });
+    }
+    return el('div', { class: 'lib-card', 'data-file': h.file },
+      el('button', { class: 'lib-open', type: 'button', onclick: () => (isVideoFile(h.file) ? openVideo(h.file) : api.shell.open(h.file)) },
+        h.thumbnail ? el('img', { src: h.thumbnail, alt: '', loading: 'lazy' }) : el('div', { class: 'ph' }),
+        el('b', { title: h.title }, h.title || basename(h.file)),
+        el('span', { class: 'muted' }, [h.uploader, new Date(h.date).toLocaleDateString('pt-BR')].filter(Boolean).join(' · '))),
+      pills,
+      (h.tags || []).length ? el('div', { class: 'tags' }, h.tags.map((t) => el('span', { class: 'tag-chip small' }, t))) : null,
+      el('div', { class: 'lib-actions' },
+        el('button', { class: 'btn small', type: 'button', onclick: () => api.shell.reveal(h.file) }, 'Pasta'),
+        h.url ? el('button', { class: 'btn small', type: 'button', onclick: () => api.shell.external(h.url) }, 'Link') : null,
+        el('button', { class: 'btn small', type: 'button', onclick: () => { state.editingId = h.id; baseRenderHistory(); } }, 'Etiquetas')));
+  }));
+  list.replaceChildren(grid);
+};
 
 // ---------- início ----------
 
@@ -441,6 +549,12 @@ $('#homeAll').addEventListener('click', () => showView('history'));
   for (let i = 0; i < 50 && !state.settings.outputDir; i++) await new Promise((r) => setTimeout(r, 50));
   prepareHints();
   prepareAdvanced();
+  const launches = Number(state.settings.layoutLaunches || 0);
+  document.body.classList.toggle('learning', launches < 3);
+  saveSetting({ layoutLaunches: launches + 1 });
   $('#layoutMode').value = layoutMode();
   applyLayout();
 })();
+
+// A busca da Biblioteca foi ligada antes da troca de layout: refaz a grade.
+$('#historySearch').addEventListener('input', () => { if (layoutMode() === 'b') renderHistory(); });

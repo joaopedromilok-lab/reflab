@@ -45,6 +45,13 @@ function fmtSecs(s) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
+// Número em português (vírgula decimal).
+function num(v, digits = 1) {
+  return Number(v).toFixed(digits).replace('.', ',');
+}
+
+const MODEL_NAMES = { base: 'Rápido', small: 'Equilibrado', turbo: 'Preciso', large: 'Máxima qualidade' };
+
 function clock(t) {
   const m = Math.floor(t / 60);
   return `${m}:${(t - m * 60).toFixed(2).padStart(5, '0')}`;
@@ -517,6 +524,7 @@ window.addEventListener('drop', (e) => e.preventDefault());
 
 async function setStudyFile(file) {
   state.studyFile = file;
+  $('#studyRun').title = '';
   $('#studyFile').textContent = file;
   $('#studyRun').disabled = false;
   $('#studyResult').replaceChildren();
@@ -619,12 +627,12 @@ function renderAnalysis(r) {
   const box = el('div', { class: 'result' },
     el('h3', {}, `Resultado: ${basename(r.file)}`),
     el('div', { class: 'stats' },
-      stat(s.shots, 'planos'),
-      stat(`${s.average.toFixed(2)}s`, 'duração média do plano'),
-      stat(s.cutsPerMinute.toFixed(1), 'cortes por minuto'),
-      stat(`${s.median.toFixed(2)}s`, 'mediana'),
-      stat(`${s.shortest.toFixed(2)}s`, 'plano mais curto'),
-      stat(`${s.longest.toFixed(2)}s`, 'plano mais longo'),
+      stat(s.shots, s.shots === 1 ? 'plano' : 'planos'),
+      stat(`${num(s.average, 2)}s`, 'duração média do plano'),
+      stat(num(s.cutsPerMinute, 1), 'cortes por minuto'),
+      stat(`${num(s.median, 2)}s`, 'mediana'),
+      stat(`${num(s.shortest, 2)}s`, 'plano mais curto'),
+      stat(`${num(s.longest, 2)}s`, 'plano mais longo'),
       s.bpm ? stat(`${s.bpm}`, 'BPM da música') : null,
       s.noBeat ? stat('—', 'sem batida marcada na música') : null,
       s.bpm && s.cuts ? stat(`${Math.round((s.cutsOnBeatRatio || 0) * 100)}%`, `dos cortes na batida (${s.cutsOnBeat} de ${s.cuts})`) : null),
@@ -1053,6 +1061,7 @@ function transcribeOptions() {
 
 async function setTranscriptFile(file) {
   state.transcriptFile = file;
+  $('#transcriptRun').title = '';
   $('#transcriptFile').textContent = file;
   $('#transcriptRun').disabled = false;
   $('#transcriptResult').replaceChildren();
@@ -1144,11 +1153,11 @@ function scriptStats(m) {
   return el('div', {},
     el('div', { class: 'stats' },
       stat(Math.round(m.wpm), 'palavras por minuto (na fala)'),
-      stat(m.firstSpeech === null ? '-' : `${m.firstSpeech.toFixed(1)}s`, 'até a primeira fala'),
+      stat(m.firstSpeech === null ? '-' : `${num(m.firstSpeech, 1)}s`, 'até a primeira fala'),
       stat(`${Math.round(m.speechRatio * 100)}%`, 'do vídeo com fala'),
       stat(m.words, 'palavras'),
-      stat(m.pauses, `pausas (média ${m.avgPause.toFixed(1)}s)`),
-      stat(m.wordsPerSentence ? m.wordsPerSentence.toFixed(1) : '-', 'palavras por frase')),
+      stat(m.pauses, `pausas (média ${num(m.avgPause, 1)}s)`),
+      stat(m.wordsPerSentence ? num(m.wordsPerSentence, 1) : '-', 'palavras por frase')),
     m.longestSentence ? el('p', { class: 'hint' }, el('b', {}, 'Frase mais longa: '), m.longestSentence) : null);
 }
 
@@ -1573,10 +1582,14 @@ function renderTranscript(r) {
 
   const box = el('div', { class: 'result sticky-player' },
     el('h3', {}, `${basename(r.file)}`),
-    el('p', { class: 'hint' }, `Fonte: ${r.source || 'whisper'}${r.model && r.source === 'whisper' ? ` · modelo ${r.model}` : ''}${r.url ? ' · ' : ''}`,
+    el('p', { class: 'hint' }, `Fonte: ${r.source && r.source !== 'whisper' ? r.source : 'transcrição no computador'}${r.model && (!r.source || r.source === 'whisper') ? ` · qualidade ${MODEL_NAMES[r.model] || r.model}` : ''}${r.url ? ' · ' : ''}`,
       r.url ? el('button', { class: 'link', onclick: () => api.shell.external(r.url) }, 'abrir o link original') : null),
     el('div', { class: 'player-wrap' }, player),
-    r.metrics ? scriptStats(r.metrics) : null,
+    r.metrics ? el('details', { class: 'metrics-box', open: !document.body.classList.contains('compact') },
+      el('summary', {},
+        el('span', {}, `${Math.round(r.metrics.wpm)} palavras/min · ${r.metrics.firstSpeech === null ? '-' : `${num(r.metrics.firstSpeech, 1)}s`} até a 1ª fala · ${Math.round(r.metrics.speechRatio * 100)}% com fala`),
+        el('span', { class: 'link' }, 'métricas do roteiro')),
+      scriptStats(r.metrics)) : null,
     tabs.node);
   resultBox = box;
   drawList();
