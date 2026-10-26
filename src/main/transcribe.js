@@ -14,6 +14,7 @@ const captions = require('./captions');
 const script = require('./script');
 const { assetPath } = require('./paths');
 const { jsonStore } = require('./store');
+const blocos = require('./blocos');
 
 const IS_WIN = process.platform === 'win32';
 
@@ -42,6 +43,15 @@ function whisperPath() {
   const bundled = process.resourcesPath && path.join(process.resourcesPath, 'whisper', name);
   if (bundled && fs.existsSync(bundled)) return bundled;
   return path.join(whisperDir(), name);
+}
+
+// Detector de fala do próprio whisper.cpp (mesmo modelo Silero do --vad).
+function vadToolPath() {
+  const name = IS_WIN ? 'whisper-vad-speech-segments.exe' : 'whisper-vad-speech-segments';
+  const bundled = process.resourcesPath && path.join(process.resourcesPath, 'whisper', name);
+  if (bundled && fs.existsSync(bundled)) return bundled;
+  const local = path.join(whisperDir(), name);
+  return fs.existsSync(local) ? local : null;
 }
 
 async function findFile(dir, name) {
@@ -137,13 +147,14 @@ async function load(file, translated = false) {
 // ---------- leitura do resultado do whisper ----------
 
 // Junta os tokens do whisper em palavras com tempo de início e fim.
-function wordsFromTokens(tokens) {
+// offset: início do bloco no áudio original (s); limite: duração do bloco.
+function wordsFromTokens(tokens, offset = 0, limite = Infinity) {
   const words = [];
   for (const tk of tokens || []) {
     const text = tk.text || '';
     if (/^\[_|^\[(BLANK|MUSIC|Música)/i.test(text) || /^<\|/.test(text)) continue;
-    const from = tk.offsets ? tk.offsets.from / 1000 : null;
-    const to = tk.offsets ? tk.offsets.to / 1000 : null;
+    const from = tk.offsets ? Math.min(tk.offsets.from / 1000, limite) + offset : null;
+    const to = tk.offsets ? Math.min(tk.offsets.to / 1000, limite) + offset : null;
     if (from === null) continue;
     if (!words.length || /^\s/.test(text)) {
       if (!text.trim()) continue;
@@ -165,12 +176,17 @@ function isNoise(text) {
   return !text || /^[[(].*[\])]$/.test(text) || /^(♪|\*|\.)+$/.test(text);
 }
 
-function parseWhisper(raw) {
+function parseWhisper(raw, offset = 0, limite = Infinity) {
   return (raw.transcription || [])
     .map((s) => {
       const text = cleanText(s.text);
-      const words = wordsFromTokens(s.tokens);
-      return { start: s.offsets.from / 1000, end: s.offsets.to / 1000, text, words };
+      const words = wordsFromTokens(s.tokens, offset, limite);
+      return {
+        start: Math.min(s.offsets.from / 1000, limite) + offset,
+        end: Math.min(s.offsets.to / 1000, limite) + offset,
+        text,
+        words,
+      };
     })
     .filter((s) => !isNoise(s.text));
 }
@@ -238,9 +254,42 @@ function register(r) {
 
 // ---------- transcrever ----------
 
+// Detecta os intervalos com fala (segundos). Devolve null se o detector não
+// estiver disponível ou falhar (aí usa-se o comportamento anterior).
+async function detectarFala(wav, onStart) {
+  const tool = vadToolPath();
+  const modelo = assetPath('models', 'ggml-silero-v5.1.2.bin');
+  if (!tool || !fs.existsSync(modelo)) return null;
+  const p = start(tool, ['-f', wav, '-vm', modelo, '-np', '-vsd', '300', '-vp', '0'], { cwd: path.dirname(tool), keepAll: true });
+  if (onStart) onStart(p);
+  const r = await p.promise;
+  if (r.code !== 0) return null;
+  return blocos.lerSegmentosVad(r.stdout);
+}
+
+// Roda o whisper-cli num WAV e devolve o JSON completo.
+async function rodarWhisperCli(cli, args, saida, { onProgress, onStart } = {}) {
+  const p = start(cli, [...args, '-of', saida], {
+    cwd: path.dirname(cli),
+    onLine: (line) => {
+      const m = line.match(/progress\s*=\s*(\d+)%/);
+      if (m && onProgress) onProgress(Number(m[1]) / 100);
+    },
+  });
+  if (onStart) onStart(p);
+  const r = await p.promise;
+  if (r.code !== 0 || !fs.existsSync(`${saida}.json`)) {
+    throw new Error(`Falha na transcrição: ${r.stderr.trim().split(/\r?\n/).slice(-2).join(' ')}`);
+  }
+  return JSON.parse(await fsp.readFile(`${saida}.json`, 'utf8'));
+}
+
 // Roda o whisper num arquivo de áudio ou vídeo e devolve os trechos.
+// Com "vad", a detecção de voz roda à parte e o áudio é transcrito em blocos
+// do arquivo original (tempos corretos). Sem o detector, usa o --vad interno.
 async function runWhisper(input, duration, {
-  language = 'pt', model = 'turbo', prompt = '', translate = false, vad = true, onPhase = () => {}, onProgress, onStart,
+  language = 'pt', model = 'turbo', prompt = '', translate = false, vad = true, blocosOpcoes,
+  onPhase = () => {}, onProgress, onStart,
 } = {}) {
   const cli = await ensureWhisper(onPhase, onProgress);
   const modelPath = await ensureModel(model, onPhase, onProgress);
@@ -250,28 +299,53 @@ async function runWhisper(input, duration, {
     const wav = path.join(tmp, 'audio.wav');
     await media.ffmpeg(['-i', input, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav],
       { duration, onProgress, onStart });
-    onPhase(translate ? 'Transcrevendo e traduzindo para inglês...' : 'Transcrevendo...');
-    if (onProgress) onProgress(0);
-    const base = path.join(tmp, 'saida');
     const threads = String(Math.max(2, Math.min(8, os.cpus().length)));
-    const args = ['-m', modelPath, '-f', wav, '-l', language || 'auto', '-t', threads, '-ojf', '-of', base, '-pp'];
+    const args = ['-l', language || 'auto', '-t', threads, '-ojf', '-pp', '-m', modelPath];
     if (prompt && prompt.trim()) args.push('--prompt', prompt.trim().slice(0, 600));
     if (translate) args.push('-tr');
-    const vadModel = assetPath('models', 'ggml-silero-v5.1.2.bin');
-    if (vad && fs.existsSync(vadModel)) args.push('--vad', '-vm', vadModel, '-vsd', '300', '-vp', '200');
-    const p = start(cli, args, {
-      cwd: path.dirname(cli),
-      onLine: (line) => {
-        const m = line.match(/progress\s*=\s*(\d+)%/);
-        if (m && onProgress) onProgress(Number(m[1]) / 100);
-      },
-    });
-    if (onStart) onStart(p);
-    const r = await p.promise;
-    if (r.code !== 0 || !fs.existsSync(`${base}.json`)) {
-      throw new Error(`Falha na transcrição: ${r.stderr.trim().split(/\r?\n/).slice(-2).join(' ')}`);
+    const fase = translate ? 'Transcrevendo e traduzindo para inglês' : 'Transcrevendo';
+
+    if (vad) {
+      onPhase('Procurando os trechos com fala...');
+      const fala = await detectarFala(wav, onStart);
+      if (fala) {
+        const info = blocos.lerWav(wav);
+        const plano = blocos.planejarBlocos(fala, blocos.duracaoWav(info), blocosOpcoes);
+        if (!plano.length) return { segments: [], segmentacao: { modo: 'blocos', blocos: 0, fala: 0 } };
+        const total = plano.reduce((acc, b) => acc + (b.end - b.start), 0);
+        onPhase(plano.length > 1 ? `${fase} (${plano.length} partes)...` : `${fase}...`);
+        if (onProgress) onProgress(0);
+        const segments = [];
+        let feito = 0;
+        for (let i = 0; i < plano.length; i++) {
+          const b = plano[i];
+          const dur = b.end - b.start;
+          const wavBloco = path.join(tmp, `bloco-${i}.wav`);
+          blocos.recortarWav(wav, wavBloco, b.start, b.end, info);
+          const raw = await rodarWhisperCli(cli, [...args, '-f', wavBloco], path.join(tmp, `saida-${i}`), {
+            onStart,
+            onProgress: onProgress && ((p) => onProgress(Math.min(1, (feito + p * dur) / total))),
+          });
+          segments.push(...parseWhisper(raw, b.start, dur));
+          await fsp.rm(wavBloco, { force: true });
+          feito += dur;
+        }
+        segments.sort((x, y) => x.start - y.start);
+        return {
+          segments,
+          segmentacao: { modo: 'blocos', blocos: plano.length, fala: +total.toFixed(1), plano },
+        };
+      }
     }
-    return parseWhisper(JSON.parse(await fsp.readFile(`${base}.json`, 'utf8')));
+
+    // Sem detecção de voz, ou detector indisponível: uma execução só (comportamento anterior).
+    onPhase(`${fase}...`);
+    if (onProgress) onProgress(0);
+    const extra = [];
+    const vadModel = assetPath('models', 'ggml-silero-v5.1.2.bin');
+    if (vad && fs.existsSync(vadModel)) extra.push('--vad', '-vm', vadModel, '-vsd', '300', '-vp', '200');
+    const raw = await rodarWhisperCli(cli, [...args, '-f', wav, ...extra], path.join(tmp, 'saida'), { onProgress, onStart });
+    return { segments: parseWhisper(raw), segmentacao: { modo: extra.length ? 'vad-interno' : 'sem-vad', blocos: 1 } };
   } finally {
     await fsp.rm(tmp, { recursive: true, force: true });
   }
@@ -279,7 +353,7 @@ async function runWhisper(input, duration, {
 
 async function transcribe(file, {
   language = 'pt', model = 'turbo', prompt = '', translate = false, vad = true,
-  url = null, useYoutubeSubs = false, ytdlpArgs = [],
+  url = null, useYoutubeSubs = false, ytdlpArgs = [], blocosOpcoes,
   onPhase = () => {}, onProgress, onStart,
 } = {}) {
   const info = await media.probe(file);
@@ -287,6 +361,7 @@ async function transcribe(file, {
   const outDir = transcriptDir(file);
   let segments = null;
   let source = 'whisper';
+  let segmentacao = null;
 
   if (url && useYoutubeSubs && !translate) {
     onPhase('Procurando a legenda publicada pelo autor...');
@@ -303,12 +378,14 @@ async function transcribe(file, {
   }
 
   if (!segments) {
-    segments = await runWhisper(file, info.duration, { language, model, prompt, translate, vad, onPhase, onProgress, onStart });
+    ({ segments, segmentacao } = await runWhisper(file, info.duration, {
+      language, model, prompt, translate, vad, blocosOpcoes, onPhase, onProgress, onStart,
+    }));
   }
 
   const result = {
     file, url, language, model, source, translated: !!translate, prompt,
-    outDir, info, segments, createdAt: Date.now(),
+    outDir, info, segments, segmentacao, createdAt: Date.now(),
   };
   return writeOutputs(result);
 }
@@ -366,7 +443,7 @@ async function transcribeLink(url, linkInfo, {
       if (r.code !== 0 || !audio) {
         throw new Error(`Não foi possível baixar o áudio: ${r.stderr.trim().split(/\r?\n/).filter((l) => /ERROR/.test(l)).pop() || ''}`);
       }
-      segments = await runWhisper(path.join(tmp, audio), info.duration, { language, model, prompt, vad, onPhase, onProgress, onStart });
+      ({ segments } = await runWhisper(path.join(tmp, audio), info.duration, { language, model, prompt, vad, onPhase, onProgress, onStart }));
     } finally {
       await fsp.rm(tmp, { recursive: true, force: true });
     }
@@ -440,4 +517,5 @@ function modelsStatus() {
 
 module.exports = {
   init, transcribe, transcribeLink, load, update, searchAll, modelsStatus, MODELS, transcriptDir, flush: () => index && index.flush(),
+  parseWhisper, // exportado para os testes
 };

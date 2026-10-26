@@ -31,9 +31,17 @@ const CENARIOS = {
     descricao: 'Mesmo teste do diagnóstico: 8 s de silêncio, fala, 8 s de silêncio, fala.',
     pedacos: [{ tipo: 'silencio', dur: 8 }, { tipo: 'fala' }, { tipo: 'silencio', dur: 8 }, { tipo: 'fala' }],
   },
+  'pausas-curtas': {
+    descricao: 'Fala, 2 s de silêncio e fala de novo (pausa curta: fica no mesmo bloco).',
+    pedacos: [{ tipo: 'fala' }, { tipo: 'silencio', dur: 2 }, { tipo: 'fala' }],
+  },
   'musica-no-inicio': {
     descricao: '10 s só de música (como a entrada de um casamento) e depois a fala.',
     pedacos: [{ tipo: 'musica', dur: 10 }, { tipo: 'fala' }],
+  },
+  'musica-no-meio': {
+    descricao: 'Fala, 12 s só de música e fala de novo (pausa muito longa: blocos separados).',
+    pedacos: [{ tipo: 'fala' }, { tipo: 'musica', dur: 12 }, { tipo: 'fala' }],
   },
   'fala-sobre-musica': {
     descricao: 'Fala com música por baixo do começo ao fim, mais 4 s só de música no final.',

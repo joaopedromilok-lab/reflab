@@ -12,6 +12,7 @@
 //   node test/transcricao/executar.js --sem-vad            # compara com a detecção de voz desligada
 //   node test/transcricao/executar.js --cenarios pausas-longas,fala-limpa
 //   node test/transcricao/executar.js --amostras           # inclui as amostras reais de amostras/arquivos (se existirem)
+//   node test/transcricao/executar.js --bloco-max 8        # força blocos pequenos (testa os cortes dentro da fala)
 //
 // Usa as ferramentas e modelos já instalados pelo RefLab (pasta de dados do app).
 // Para usar outra pasta: variável de ambiente REFLAB_DADOS.
@@ -47,6 +48,7 @@ function argumentos() {
     semVad: a.includes('--sem-vad'),
     amostras: a.includes('--amostras'),
     manter: a.includes('--manter-arquivos'),
+    blocoMax: valor('--bloco-max') ? Number(valor('--bloco-max')) : null,
   };
 }
 
@@ -91,6 +93,7 @@ async function avaliar(caso, opcoes, pastaTmp) {
     model: opcoes.modelo,
     prompt: caso.prompt || '',
     vad: !opcoes.semVad,
+    blocosOpcoes: opcoes.blocoMax ? { maximo: opcoes.blocoMax, minimo: Math.min(60, opcoes.blocoMax / 2) } : undefined,
     onPhase: () => {},
   });
   const segundos = (performance.now() - t0) / 1000;
@@ -109,6 +112,7 @@ async function avaliar(caso, opcoes, pastaTmp) {
     duracaoAudio: r.info.duration,
     segundosProcessando: +segundos.toFixed(1),
     fonte: r.source,
+    segmentacao: r.segmentacao ? { modo: r.segmentacao.modo, blocos: r.segmentacao.blocos, plano: r.segmentacao.plano } : null,
     wer: w.wer,
     werSemAcento: wSemAcento.wer,
     contagem: { ref: w.palavrasRef, previstas: w.palavrasHip, trocas: w.trocas, remocoes: w.remocoes, insercoes: w.insercoes },
@@ -174,13 +178,14 @@ async function main() {
     'viés': r.tempoPalavras ? fmt(r.tempoPalavras.viesMedio, 2, ' s') : '-',
     'até 0,3 s': r.tempoPalavras ? fmt(r.tempoPalavras.dentroDe300ms * 100, 0, '%') : '-',
     'início trechos': r.inicioTrechos.map((x) => fmt(x.erro, 2)).join(' / ') || '-',
+    'modo': r.segmentacao ? `${r.segmentacao.modo}${r.segmentacao.blocos > 1 ? ` x${r.segmentacao.blocos}` : ''}` : '-',
     'tempo proc.': `${r.segundosProcessando} s`,
   })));
 
   const pastaRes = path.join(__dirname, 'resultados');
   fs.mkdirSync(pastaRes, { recursive: true });
   const carimbo = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const arquivoRes = path.join(pastaRes, `${carimbo}-${op.modelo}${op.semVad ? '-sem-vad' : ''}.json`);
+  const arquivoRes = path.join(pastaRes, `${carimbo}-${op.modelo}${op.semVad ? '-sem-vad' : ''}${op.blocoMax ? `-bloco${op.blocoMax}` : ''}.json`);
   fs.writeFileSync(arquivoRes, JSON.stringify({
     data: new Date().toISOString(), plataforma: `${process.platform} ${process.arch}`, opcoes: op, resultados,
   }, null, 2));

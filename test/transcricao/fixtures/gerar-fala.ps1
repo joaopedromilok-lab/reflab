@@ -2,8 +2,9 @@
 # Usa a voz "Microsoft Maria" do Windows e registra o instante em que cada
 # palavra começa (evento SpeakProgress), que vira o gabarito de tempos.
 #
-# Uso (no Windows, na pasta do projeto):
-#   powershell -ExecutionPolicy Bypass -File test/transcricao/fixtures/gerar-fala.ps1
+# Uso (no Windows): abra este arquivo, confira o conteúdo e rode-o numa sessão
+# do PowerShell que já permita scripts locais, sem alterar a política de execução
+# do sistema. Se a política bloquear o arquivo, copie e cole o conteúdo na sessão.
 #
 # Saída: fala-ptbr.wav (16 kHz, mono, 16 bits) e fala-ptbr.json (texto e tempos).
 # Os arquivos gerados ficam versionados no repositório; só é preciso rodar de
