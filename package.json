@@ -10,7 +10,9 @@
   "scripts": {
     "start": "electron .",
     "dist:mac": "electron-builder --mac --arm64",
-    "dist:win": "electron-builder --win --x64"
+    "dist:win": "electron-builder --win --x64",
+    "test": "node --test \"test/**/*.test.js\"",
+    "teste:transcricao": "node test/transcricao/executar.js"
   },
   "build": {
     "appId": "com.reflab.app",
