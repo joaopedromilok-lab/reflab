@@ -3,10 +3,8 @@
    ensureTools, transcribeOptions, PRESETS, isVideoFile */
 'use strict';
 
-// Layouts em teste (só nesta versão):
-//  classic = o atual
-//  a       = arrumação: opções resumidas, avançado escondido, dicas em ⓘ, atividades em gaveta
-//  b       = centrado no vídeo: Início + página do vídeo com abas (inclui tudo da A)
+// Layout do app: centrado no vídeo. Início com o que fazer + página do vídeo com
+// abas; opções resumidas, avançado escondido, dicas em ⓘ e atividades em gaveta.
 
 const VIDEO_VIEWS = ['video', 'study', 'moments', 'transcript', 'tools'];
 const VIDEO_TABS = [
@@ -16,10 +14,6 @@ const VIDEO_TABS = [
   ['transcript', 'Transcrição'],
   ['tools', 'Ferramentas'],
 ];
-
-function layoutMode() {
-  return ['a', 'b'].includes(state.settings.layout) ? state.settings.layout : 'classic';
-}
 
 // ---------- preparação do HTML (uma vez) ----------
 
@@ -73,42 +67,30 @@ function refreshResultState() {
     $(view).classList.toggle('has-result', has);
   }
   const tr = $('.tr-options');
-  if (tr && layoutMode() !== 'classic') tr.open = !$('#view-transcript').classList.contains('has-result');
+  if (tr) tr.open = !$('#view-transcript').classList.contains('has-result');
 }
 
 // ---------- aplicar o layout ----------
 
 function applyLayout() {
-  const mode = layoutMode();
   const body = document.body;
-  body.classList.toggle('compact', mode !== 'classic');
-  body.classList.toggle('layout-a', mode === 'a');
-  body.classList.toggle('layout-b', mode === 'b');
+  body.classList.add('compact', 'layout-b');
   body.classList.remove('dl-expanded');
-  for (const d of $$('details.advanced')) d.open = mode === 'classic';
-  if (mode === 'classic') closeActivity();
+  for (const d of $$('details.advanced')) d.open = false;
   updateDownloadSummary();
   updateActivityToggle();
   const current = ($('.view.active') || {}).id || '';
-  if (mode === 'b' && !['view-home', 'view-history', 'view-compare', 'view-settings'].includes(current) && !state.currentVideo) {
+  if (!['view-home', 'view-history', 'view-compare', 'view-settings'].includes(current) && !state.currentVideo) {
     showView('home');
-  } else if (mode !== 'b' && ['view-home', 'view-video'].includes(current)) {
-    showView('download');
   } else {
     updateVideoMode(current.replace('view-', ''));
   }
 }
 
-$('#layoutMode').addEventListener('change', async (e) => {
-  await saveSetting({ layout: e.target.value });
-  applyLayout();
-  toast(e.target.value === 'classic' ? 'Layout atual.' : `Layout ${e.target.value.toUpperCase()} ativado.`);
-});
-
 // ---------- gaveta de atividades ----------
 
 function openActivity() {
-  if (layoutMode() !== 'classic') document.body.classList.add('activity-open');
+  document.body.classList.add('activity-open');
 }
 function closeActivity() {
   document.body.classList.remove('activity-open');
@@ -170,7 +152,7 @@ for (const id of ['maxHeight', 'organize', 'afterTranscribe', 'afterAnalyze', 'p
 $('#presets').addEventListener('click', () => setTimeout(updateDownloadSummary, 80));
 $('#pickOutput').addEventListener('click', () => setTimeout(updateDownloadSummary, 1500));
 
-// ---------- página do vídeo (layout B) ----------
+// ---------- página do vídeo ----------
 
 async function videoMeta(file) {
   const hist = (await api.history.list()).find((h) => h.file === file);
@@ -269,14 +251,14 @@ async function renderVideoSummary() {
 }
 
 function updateVideoMode(name) {
-  const inVideo = layoutMode() === 'b' && !!state.currentVideo && VIDEO_VIEWS.includes(name);
+  const inVideo = !!state.currentVideo && VIDEO_VIEWS.includes(name);
   document.body.classList.toggle('video-mode', inVideo);
   if (inVideo) renderVideoBar(name);
   else $('#videoBar').replaceChildren();
   if (name === 'video') renderVideoSummary();
   if (name === 'home') renderHome();
   // Na página do vídeo, o item "vídeo aberto" fica marcado no menu.
-  document.body.classList.toggle('has-video', layoutMode() === 'b' && !!state.currentVideo);
+  document.body.classList.toggle('has-video', !!state.currentVideo);
   if (state.currentVideo) $('#navVideoText').textContent = basename(state.currentVideo).replace(/\.[^.]+$/, '');
   if (inVideo) {
     for (const b of $$('.nav')) b.classList.toggle('active', b.id === 'navVideo');
@@ -290,7 +272,7 @@ const baseShowView = showView;
 showView = function showViewWithLayout(name) {
   baseShowView(name);
   updateVideoMode(name);
-  if (layoutMode() !== 'classic') closeActivity();
+  closeActivity();
 };
 
 // Cartões de atividade: atalho para abrir a página do vídeo.
@@ -299,22 +281,21 @@ const baseJobCard = jobCard;
 jobCard = function jobCardWithLayout(job) {
   const card = baseJobCard(job);
   const file = job.files && job.files[0];
-  if (layoutMode() === 'b' && job.status === 'done' && file && isVideoFile(file) && job.kind === 'download') {
+  if (job.status === 'done' && file && isVideoFile(file) && job.kind === 'download') {
     const btns = card.querySelector('.btns');
     if (btns) btns.prepend(el('button', { class: 'btn small primary', onclick: () => openVideo(file, viewForJob(job)) }, 'Abrir no RefLab'));
   }
   return card;
 };
 
-// Biblioteca: clicar no vídeo abre a página dele (layout B).
+// Biblioteca: clicar no vídeo abre a página dele.
 $('#historyList').addEventListener('click', (e) => {
-  if (layoutMode() !== 'b') return;
   if (e.target.closest('button, input, textarea')) return;
   const row = e.target.closest('.hitem');
   if (row && row.dataset.file && isVideoFile(row.dataset.file)) openVideo(row.dataset.file);
 });
 
-// ---------- Início (layout B) ----------
+// ---------- Início ----------
 
 const INTENTS = [
   ['download', 'Baixar para editar', 'Formato pronto para o Premiere e o DaVinci'],
@@ -493,7 +474,7 @@ $('#homeClipUse').addEventListener('click', () => {
 });
 $('#homeClipIgnore').addEventListener('click', () => $('#clipBanner').classList.add('hidden'));
 
-// ---------- Biblioteca em grade com status (layout B) ----------
+// ---------- Biblioteca em grade com status ----------
 
 const statusCache = new Map();
 async function videoStatus(file) {
@@ -508,7 +489,7 @@ api.jobs.onUpdate((job) => { if (job.status === 'done' && job.params && job.para
 const baseRenderHistory = renderHistory;
 // eslint-disable-next-line no-global-assign
 renderHistory = function renderHistoryWithLayout() {
-  if (layoutMode() !== 'b' || $('#historyMode').value === 'speech') { baseRenderHistory(); return; }
+  if ($('#historyMode').value === 'speech') { baseRenderHistory(); return; }
   baseRenderHistory(); // filtro de etiquetas e estado vazio
   const list = $('#historyList');
   const rows = [...list.querySelectorAll('.hitem')];
@@ -552,9 +533,8 @@ renderHistory = function renderHistoryWithLayout() {
   const launches = Number(state.settings.layoutLaunches || 0);
   document.body.classList.toggle('learning', launches < 3);
   saveSetting({ layoutLaunches: launches + 1 });
-  $('#layoutMode').value = layoutMode();
   applyLayout();
 })();
 
-// A busca da Biblioteca foi ligada antes da troca de layout: refaz a grade.
-$('#historySearch').addEventListener('input', () => { if (layoutMode() === 'b') renderHistory(); });
+// A busca da Biblioteca foi ligada (em app.js) à versão em lista: refaz a grade.
+$('#historySearch').addEventListener('input', () => renderHistory());
