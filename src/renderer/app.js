@@ -45,6 +45,13 @@ function fmtSecs(s) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
+// Número em português (vírgula decimal).
+function num(v, digits = 1) {
+  return Number(v).toFixed(digits).replace('.', ',');
+}
+
+const MODEL_NAMES = { base: 'Rápido', small: 'Equilibrado', turbo: 'Preciso', large: 'Máxima qualidade' };
+
 function clock(t) {
   const m = Math.floor(t / 60);
   return `${m}:${(t - m * 60).toFixed(2).padStart(5, '0')}`;
@@ -59,6 +66,7 @@ function fmtSpeed(b) {
 let toastTimer;
 function toast(msg, isErr = false) {
   const t = $('#toast');
+  t.setAttribute('aria-live', isErr ? 'assertive' : 'polite'); // erro é anunciado na hora pelo leitor de tela
   t.textContent = msg;
   t.className = `toast${isErr ? ' err' : ''}`;
   clearTimeout(toastTimer);
@@ -517,6 +525,7 @@ window.addEventListener('drop', (e) => e.preventDefault());
 
 async function setStudyFile(file) {
   state.studyFile = file;
+  $('#studyRun').title = '';
   $('#studyFile').textContent = file;
   $('#studyRun').disabled = false;
   $('#studyResult').replaceChildren();
@@ -619,12 +628,12 @@ function renderAnalysis(r) {
   const box = el('div', { class: 'result' },
     el('h3', {}, `Resultado: ${basename(r.file)}`),
     el('div', { class: 'stats' },
-      stat(s.shots, 'planos'),
-      stat(`${s.average.toFixed(2)}s`, 'duração média do plano'),
-      stat(s.cutsPerMinute.toFixed(1), 'cortes por minuto'),
-      stat(`${s.median.toFixed(2)}s`, 'mediana'),
-      stat(`${s.shortest.toFixed(2)}s`, 'plano mais curto'),
-      stat(`${s.longest.toFixed(2)}s`, 'plano mais longo'),
+      stat(s.shots, s.shots === 1 ? 'plano' : 'planos'),
+      stat(`${num(s.average, 2)}s`, 'duração média do plano'),
+      stat(num(s.cutsPerMinute, 1), 'cortes por minuto'),
+      stat(`${num(s.median, 2)}s`, 'mediana'),
+      stat(`${num(s.shortest, 2)}s`, 'plano mais curto'),
+      stat(`${num(s.longest, 2)}s`, 'plano mais longo'),
       s.bpm ? stat(`${s.bpm}`, 'BPM da música') : null,
       s.noBeat ? stat('—', 'sem batida marcada na música') : null,
       s.bpm && s.cuts ? stat(`${Math.round((s.cutsOnBeatRatio || 0) * 100)}%`, `dos cortes na batida (${s.cutsOnBeat} de ${s.cuts})`) : null),
@@ -648,9 +657,12 @@ function renderAnalysis(r) {
       const star = el('button', {
         class: `star${favs.has(sh.index) ? ' on' : ''}`,
         title: 'Favorito',
+        'aria-label': `Favoritar plano ${sh.index}`,
+        'aria-pressed': String(favs.has(sh.index)),
         onclick: () => {
           if (favs.has(sh.index)) favs.delete(sh.index); else favs.add(sh.index);
           star.classList.toggle('on', favs.has(sh.index));
+          star.setAttribute('aria-pressed', String(favs.has(sh.index)));
           saveFavs();
         },
       }, '★');
@@ -713,9 +725,25 @@ function renderTagFilter() {
     }, t)));
 }
 
+// Liga cada rótulo de campo (.field > label) ao seu controle, para o clique no
+// rótulo focar o campo e o leitor de tela anunciar o nome. Vale para os campos
+// do HTML e para os criados depois pelo app.
+let campos = 0;
+function ligarRotulos(raiz = document) {
+  for (const label of raiz.querySelectorAll('.field > label:not([for])')) {
+    if (label.querySelector('input, select, textarea')) continue; // o rótulo já envolve o campo
+    const campo = label.parentElement.querySelector('input, select, textarea');
+    if (!campo) continue;
+    if (!campo.id) campo.id = `campo-${++campos}`;
+    label.htmlFor = campo.id;
+  }
+}
+ligarRotulos();
+new MutationObserver(() => ligarRotulos()).observe(document.body, { childList: true, subtree: true });
+
 function historyEditor(h) {
-  const tags = el('input', { value: (h.tags || []).join(', '), placeholder: 'etiquetas separadas por vírgula (ex.: entrada da noiva, drone, gol)' });
-  const notes = el('textarea', { rows: '3', placeholder: 'anotações: o que chamou atenção nessa referência?' });
+  const tags = el('input', { value: (h.tags || []).join(', '), 'aria-label': 'Etiquetas', placeholder: 'etiquetas separadas por vírgula (ex.: entrada da noiva, drone, gol)' });
+  const notes = el('textarea', { rows: '3', 'aria-label': 'Anotações', placeholder: 'anotações: o que chamou atenção nessa referência?' });
   notes.value = h.notes || '';
   return el('div', { class: 'heditor' }, tags, notes,
     el('div', { class: 'row' },
@@ -769,7 +797,7 @@ function renderHistory() {
   list.replaceChildren(...items.slice(0, 300).map((h) => {
     const sub = el('div', { class: 'sub' },
       [h.uploader, h.site, new Date(h.date).toLocaleString('pt-BR'), (PRESETS.find((p) => p.id === h.preset) || {}).name].filter(Boolean).join(' · '));
-    const row = el('div', { class: 'hitem' },
+    const row = el('div', { class: 'hitem', 'data-file': h.file },
       h.thumbnail ? el('img', { src: h.thumbnail, alt: '', loading: 'lazy' }) : el('div', { class: 'ph' }),
       el('div', { class: 'meta' },
         el('div', { class: 'title', title: h.title }, h.title || basename(h.file)),
@@ -1053,6 +1081,7 @@ function transcribeOptions() {
 
 async function setTranscriptFile(file) {
   state.transcriptFile = file;
+  $('#transcriptRun').title = '';
   $('#transcriptFile').textContent = file;
   $('#transcriptRun').disabled = false;
   $('#transcriptResult').replaceChildren();
@@ -1144,11 +1173,11 @@ function scriptStats(m) {
   return el('div', {},
     el('div', { class: 'stats' },
       stat(Math.round(m.wpm), 'palavras por minuto (na fala)'),
-      stat(m.firstSpeech === null ? '-' : `${m.firstSpeech.toFixed(1)}s`, 'até a primeira fala'),
+      stat(m.firstSpeech === null ? '-' : `${num(m.firstSpeech, 1)}s`, 'até a primeira fala'),
       stat(`${Math.round(m.speechRatio * 100)}%`, 'do vídeo com fala'),
       stat(m.words, 'palavras'),
-      stat(m.pauses, `pausas (média ${m.avgPause.toFixed(1)}s)`),
-      stat(m.wordsPerSentence ? m.wordsPerSentence.toFixed(1) : '-', 'palavras por frase')),
+      stat(m.pauses, `pausas (média ${num(m.avgPause, 1)}s)`),
+      stat(m.wordsPerSentence ? num(m.wordsPerSentence, 1) : '-', 'palavras por frase')),
     m.longestSentence ? el('p', { class: 'hint' }, el('b', {}, 'Frase mais longa: '), m.longestSentence) : null);
 }
 
@@ -1573,10 +1602,14 @@ function renderTranscript(r) {
 
   const box = el('div', { class: 'result sticky-player' },
     el('h3', {}, `${basename(r.file)}`),
-    el('p', { class: 'hint' }, `Fonte: ${r.source || 'whisper'}${r.model && r.source === 'whisper' ? ` · modelo ${r.model}` : ''}${r.url ? ' · ' : ''}`,
+    el('p', { class: 'hint' }, `Fonte: ${r.source && r.source !== 'whisper' ? r.source : 'transcrição no computador'}${r.model && (!r.source || r.source === 'whisper') ? ` · qualidade ${MODEL_NAMES[r.model] || r.model}` : ''}${r.url ? ' · ' : ''}`,
       r.url ? el('button', { class: 'link', onclick: () => api.shell.external(r.url) }, 'abrir o link original') : null),
     el('div', { class: 'player-wrap' }, player),
-    r.metrics ? scriptStats(r.metrics) : null,
+    r.metrics ? el('details', { class: 'metrics-box', open: !document.body.classList.contains('compact') },
+      el('summary', {},
+        el('span', {}, `${Math.round(r.metrics.wpm)} palavras/min · ${r.metrics.firstSpeech === null ? '-' : `${num(r.metrics.firstSpeech, 1)}s`} até a 1ª fala · ${Math.round(r.metrics.speechRatio * 100)}% com fala`),
+        el('span', { class: 'link' }, 'métricas do roteiro')),
+      scriptStats(r.metrics)) : null,
     tabs.node);
   resultBox = box;
   drawList();

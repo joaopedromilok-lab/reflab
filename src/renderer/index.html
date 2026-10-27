@@ -5,6 +5,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: https: data:; media-src 'self' file:; style-src 'self' 'unsafe-inline'; script-src 'self'">
   <title>RefLab</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="layouts.css">
 </head>
 <body>
   <header class="window-titlebar" aria-label="Barra do RefLab">
@@ -15,6 +16,10 @@
     <aside class="sidebar">
       <div class="brand"><span class="logo" aria-hidden="true">R</span><span>RefLab</span></div>
       <nav>
+        <div class="nav-group nav-home-group">
+          <button class="nav" data-view="home"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg> Início</button>
+          <button class="nav nav-video" data-view="video" id="navVideo"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg> <span id="navVideoText">Vídeo aberto</span></button>
+        </div>
         <div class="nav-group">
           <div class="nav-group-label">REFERÊNCIAS</div>
           <button class="nav active" data-view="download" aria-current="page"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg> Baixar</button>
@@ -38,10 +43,62 @@
         <span id="updateBoxVersion"></span>
         <button class="btn primary small" id="updateBoxBtn">Atualizar agora</button>
       </div>
+      <button class="activity-toggle" id="activityToggle" type="button">
+        <span class="activity-dot" id="activityDot"></span>
+        <span id="activityToggleText">Atividades</span>
+      </button>
       <div class="sidebar-foot" id="toolsBadge">Verificando ferramentas...</div>
     </aside>
 
     <main class="content">
+      <div class="video-bar" id="videoBar"></div>
+
+      <!-- INÍCIO (layout B) -->
+      <section class="view" id="view-home">
+        <header class="view-head">
+          <h1>O que vamos fazer?</h1>
+          <p>Cole um link ou traga um vídeo do computador. Tudo sobre ele fica numa página só.</p>
+        </header>
+        <div class="home-box" id="homeDrop">
+          <div class="banner hidden" id="homeClip">
+            <span>Link copiado: <b id="homeClipUrl"></b></span>
+            <div class="row">
+              <button class="btn primary small" id="homeClipUse" type="button">Usar este link</button>
+              <button class="btn small" id="homeClipIgnore" type="button">Ignorar</button>
+            </div>
+          </div>
+          <textarea id="homeInput" rows="2" placeholder="Cole o link de um vídeo (YouTube, Instagram, TikTok, Vimeo...). Vários? Um por linha."></textarea>
+          <div class="home-or"><span>ou</span><button class="btn" id="homePick" type="button">Escolher um vídeo do computador</button></div>
+        </div>
+        <div class="intents" id="homeIntents"></div>
+        <div class="home-tr hidden" id="homeTr">
+          <div class="field">
+            <label>Idioma da fala</label>
+            <select id="homeTrLang">
+              <option value="pt">Português</option>
+              <option value="en">Inglês</option>
+              <option value="es">Espanhol</option>
+              <option value="auto">Detectar automaticamente</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Nomes e palavras difíceis <span class="muted">(opcional)</span></label>
+            <input id="homeTrPrompt" placeholder="Ex.: Ana Beatriz, Rafael, Igreja Matriz de Santa Rita">
+          </div>
+        </div>
+        <div class="actions home-actions">
+          <button class="btn primary big" id="homeGo" type="button">Começar</button>
+          <span class="muted small-text" id="homeSummary"></span>
+        </div>
+        <div class="home-recent-head"><h3 class="label">Recentes</h3><button class="link" id="homeAll" type="button">ver biblioteca</button></div>
+        <div class="recent-grid" id="homeRecent"></div>
+      </section>
+
+      <!-- PÁGINA DO VÍDEO (layout B) -->
+      <section class="view" id="view-video">
+        <div id="videoSummary"></div>
+      </section>
+
       <!-- BAIXAR -->
       <section class="view active" id="view-download">
         <header class="view-head">
@@ -73,7 +130,9 @@
           <div id="urlInfo"></div>
         </section>
 
-        <section class="download-step">
+        <div class="dl-summary" id="dlSummary"></div>
+
+        <section class="download-step dl-options">
           <div class="step-heading">
             <span class="step-index">02</span>
             <div><h2>Escolha o formato</h2><p>Selecione um preset e ajuste a qualidade ou os trechos.</p></div>
@@ -102,7 +161,7 @@
           </div>
         </section>
 
-        <section class="download-step">
+        <section class="download-step dl-options">
           <div class="step-heading">
             <span class="step-index">03</span>
             <div><h2>Escolha onde salvar</h2><p>Defina a pasta e como organizar os arquivos.</p></div>
@@ -191,7 +250,7 @@
             <p class="hint">Evita contar flashes e piscadas como planos.</p>
           </div>
         </div>
-        <div class="actions"><button class="btn primary" id="studyRun" disabled>Analisar cortes</button></div>
+        <div class="actions"><button class="btn primary" id="studyRun" disabled title="Escolha um vídeo primeiro">Analisar cortes</button></div>
         <div id="studyResult"></div>
       </section>
 
@@ -303,7 +362,7 @@
           <p class="hint">Ajuda a IA a escrever certo nomes de pessoas, marcas e lugares.</p>
         </div>
         <div class="field"><label class="check"><input type="checkbox" id="transcribeVad"> Ignorar música e silêncio (recomendado: evita texto inventado em trechos só com música)</label></div>
-        <div class="actions"><button class="btn primary" id="transcriptRun" disabled>Transcrever</button></div>
+        <div class="actions"><button class="btn primary" id="transcriptRun" disabled title="Escolha um arquivo primeiro">Transcrever</button></div>
         <div id="transcriptResult"></div>
       </section>
 
@@ -399,7 +458,8 @@
             <h3>Extrair frames em intervalo</h3>
             <p>Um PNG a cada X segundos: bom para moodboard e referência de cor.</p>
             <div class="row">
-              <input id="frameEvery" placeholder="a cada (s) ex.: 2" value="2">
+              <input id="frameEvery" placeholder="ex.: 2" value="2" style="max-width:90px">
+              <span class="muted">segundos</span>
               <button class="btn primary needs-file" id="framesRun">Extrair</button>
             </div>
           </div>
@@ -499,6 +559,7 @@
       <div class="activity-head">
         <div class="activity-title"><h2>Atividades</h2><span class="activity-count" id="activityCount">0 ativas</span></div>
         <button class="link" id="clearFinished">Limpar concluídas</button>
+        <button class="link activity-close" id="activityClose" type="button">Fechar</button>
       </div>
       <div id="jobList" class="jobs"><p class="empty">Nada por aqui ainda.</p></div>
     </aside>
@@ -514,7 +575,8 @@
     </div>
   </div>
 
-  <div class="toast hidden" id="toast"></div>
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
   <script src="app.js"></script>
+  <script src="layouts.js"></script>
 </body>
 </html>
