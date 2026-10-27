@@ -6,3 +6,9 @@ vendor/whisper/*
 !vendor/whisper/.gitkeep
 vendor/ffmpeg/*
 !vendor/ffmpeg/.gitkeep
+
+# base de testes da transcrição
+test/transcricao/resultados/
+test/transcricao/amostras/arquivos/
+test/transcricao/fleurs/
+test/transcricao/coraa/

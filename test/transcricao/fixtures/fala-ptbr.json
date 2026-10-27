@@ -1,0 +1,151 @@
+{
+    "descricao":  "Fala sintética pt-BR (voz Microsoft Maria Desktop). Tempos = início de cada palavra informado pelo sintetizador.",
+    "voz":  "Microsoft Maria Desktop",
+    "texto":  "Ana Beatriz e Rafael, hoje vocês prometem diante de todos cuidar um do outro. Na alegria e na tristeza, na saúde e na doença. O padre Antônio abençoa a união na Igreja Matriz de Santa Rita.",
+    "palavras":  [
+                     {
+                         "w":  "Ana",
+                         "start":  0.097
+                     },
+                     {
+                         "w":  "Beatriz",
+                         "start":  0.32
+                     },
+                     {
+                         "w":  "e",
+                         "start":  0.97
+                     },
+                     {
+                         "w":  "Rafael",
+                         "start":  1.076
+                     },
+                     {
+                         "w":  "hoje",
+                         "start":  2.06
+                     },
+                     {
+                         "w":  "vocês",
+                         "start":  2.445
+                     },
+                     {
+                         "w":  "prometem",
+                         "start":  3.01
+                     },
+                     {
+                         "w":  "diante",
+                         "start":  3.678
+                     },
+                     {
+                         "w":  "de",
+                         "start":  4.21
+                     },
+                     {
+                         "w":  "todos",
+                         "start":  4.382
+                     },
+                     {
+                         "w":  "cuidar",
+                         "start":  4.915
+                     },
+                     {
+                         "w":  "um",
+                         "start":  5.36
+                     },
+                     {
+                         "w":  "do",
+                         "start":  5.5
+                     },
+                     {
+                         "w":  "outro",
+                         "start":  5.684
+                     },
+                     {
+                         "w":  "Na",
+                         "start":  7.185
+                     },
+                     {
+                         "w":  "alegria",
+                         "start":  7.358
+                     },
+                     {
+                         "w":  "e",
+                         "start":  7.962
+                     },
+                     {
+                         "w":  "na",
+                         "start":  8.044
+                     },
+                     {
+                         "w":  "tristeza",
+                         "start":  8.208
+                     },
+                     {
+                         "w":  "na",
+                         "start":  9.338
+                     },
+                     {
+                         "w":  "saúde",
+                         "start":  9.533
+                     },
+                     {
+                         "w":  "e",
+                         "start":  10.2
+                     },
+                     {
+                         "w":  "na",
+                         "start":  10.288
+                     },
+                     {
+                         "w":  "doença",
+                         "start":  10.45
+                     },
+                     {
+                         "w":  "O",
+                         "start":  12.08
+                     },
+                     {
+                         "w":  "padre",
+                         "start":  12.18
+                     },
+                     {
+                         "w":  "Antônio",
+                         "start":  12.679
+                     },
+                     {
+                         "w":  "abençoa",
+                         "start":  13.224
+                     },
+                     {
+                         "w":  "a",
+                         "start":  13.874
+                     },
+                     {
+                         "w":  "união",
+                         "start":  13.941
+                     },
+                     {
+                         "w":  "na",
+                         "start":  14.39
+                     },
+                     {
+                         "w":  "Igreja",
+                         "start":  14.55
+                     },
+                     {
+                         "w":  "Matriz",
+                         "start":  15.141
+                     },
+                     {
+                         "w":  "de",
+                         "start":  15.655
+                     },
+                     {
+                         "w":  "Santa",
+                         "start":  15.786
+                     },
+                     {
+                         "w":  "Rita",
+                         "start":  16.264
+                     }
+                 ]
+}

@@ -1,0 +1,53 @@
+{
+  "descricao": "Coleção planejada de amostras reais em português brasileiro. Nenhuma foi avaliada ainda: os arquivos de áudio e as referências precisam ser preparados (ver LEIA-ME.md). O executor só usa as amostras que têm áudio e texto de referência em amostras/arquivos/.",
+  "amostras": [
+    {
+      "id": "casamento-votos-com-musica",
+      "descricao": "Votos ou fala do celebrante com música de fundo (cerimônia).",
+      "duracaoAlvo": "60 a 120 s",
+      "nomesDificeis": "",
+      "oQueMede": "precisão com música por baixo; nomes próprios; tempos das palavras",
+      "status": "pendente"
+    },
+    {
+      "id": "casamento-entrada-musica-longa",
+      "descricao": "Entrada com 20 s ou mais só de música e depois fala (ex.: abertura da cerimônia).",
+      "duracaoAlvo": "60 a 90 s",
+      "nomesDificeis": "",
+      "oQueMede": "texto inventado durante a música; início correto da primeira fala",
+      "status": "pendente"
+    },
+    {
+      "id": "discurso-pausas-longas",
+      "descricao": "Discurso de padrinho ou entrevista com pausas longas (3 s ou mais) e risadas.",
+      "duracaoAlvo": "90 a 180 s",
+      "nomesDificeis": "",
+      "oQueMede": "tempos depois de pausas longas; segmentação",
+      "status": "pendente"
+    },
+    {
+      "id": "festa-ruido-ambiente",
+      "descricao": "Fala em ambiente de festa (conversa, copos, música ao fundo).",
+      "duracaoAlvo": "60 s",
+      "nomesDificeis": "",
+      "oQueMede": "precisão em ruído; palavras inventadas",
+      "status": "pendente"
+    },
+    {
+      "id": "futebol-narracao-torcida",
+      "descricao": "Narração ou comentário de futebol com torcida ao fundo.",
+      "duracaoAlvo": "60 a 120 s",
+      "nomesDificeis": "",
+      "oQueMede": "nomes de jogadores; fala rápida; ruído forte",
+      "status": "pendente"
+    },
+    {
+      "id": "publicidade-locucao-trilha",
+      "descricao": "Comercial com locução sobre trilha musical.",
+      "duracaoAlvo": "30 a 60 s",
+      "nomesDificeis": "",
+      "oQueMede": "locução rápida sobre música; nomes de marcas",
+      "status": "pendente"
+    }
+  ]
+}
