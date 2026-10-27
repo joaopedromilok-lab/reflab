@@ -132,4 +132,46 @@ function errosDeInicio(iniciosReais, iniciosPrevistos) {
   });
 }
 
-module.exports = { normalizar, tokens, alinhar, wer, errosDeTempo, errosDeInicio, percentil };
+// Trechos perdidos: sequências de pelo menos "minimo" palavras da referência
+// removidas em seguida (trocas no meio não interrompem; inserções sim não contam).
+// Devolve o texto de cada trecho.
+function trechosPerdidos(resultadoWer, minimo = 3) {
+  const out = [];
+  let atual = [];
+  const fechar = () => { if (atual.length >= minimo) out.push(atual.join(' ')); atual = []; };
+  for (const o of resultadoWer.ops) {
+    if (o.tipo === 'remocao') atual.push(resultadoWer.ref[o.ref]);
+    else if (o.tipo !== 'insercao') fechar();
+  }
+  fechar();
+  return out;
+}
+
+// Frases perdidas: frases da referência com pelo menos "fracao" das palavras
+// removidas (não reconhecidas de jeito nenhum, nem com erro).
+function frasesPerdidas(frases, textoHip, { fracao = 0.5, ...opcoes } = {}) {
+  const dono = [];
+  const refTokens = [];
+  frases.forEach((f, i) => { for (const t of tokens(f, opcoes)) { refTokens.push(t); dono.push(i); } });
+  const hip = tokens(textoHip, opcoes);
+  const ops = alinhar(refTokens, hip);
+  const removidas = frases.map(() => 0);
+  for (const o of ops) if (o.tipo === 'remocao') removidas[dono[o.ref]]++;
+  return frases
+    .map((f, i) => ({ frase: f, palavras: tokens(f, opcoes).length, removidas: removidas[i] }))
+    .filter((x) => x.palavras && x.removidas / x.palavras >= fracao);
+}
+
+// Repetições a mais: sequências de 4 palavras que aparecem mais vezes na
+// transcrição do que na referência (sinal de laço ou de trecho duplicado).
+function repeticoes(resultadoWer, n = 4) {
+  const conta = (t) => {
+    const m = new Map();
+    for (let i = 0; i + n <= t.length; i++) { const k = t.slice(i, i + n).join(' '); m.set(k, (m.get(k) || 0) + 1); }
+    return m;
+  };
+  const r = conta(resultadoWer.ref);
+  return [...conta(resultadoWer.hip)].filter(([k, v]) => v > Math.max(1, r.get(k) || 0)).map(([k, v]) => ({ texto: k, vezes: v }));
+}
+
+module.exports = { normalizar, tokens, alinhar, wer, errosDeTempo, errosDeInicio, percentil, trechosPerdidos, frasesPerdidas, repeticoes };

@@ -2,7 +2,7 @@
 // Testes das métricas (rodam sem whisper): node --test test/
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizar, wer, errosDeTempo, errosDeInicio, percentil } = require('./metricas');
+const { normalizar, wer, errosDeTempo, errosDeInicio, percentil, trechosPerdidos, frasesPerdidas, repeticoes } = require('./metricas');
 
 test('normaliza pontuação, caixa e espaços', () => {
   assert.equal(normalizar('  Olá, MUNDO!  Tudo bem?'), 'olá mundo tudo bem');
@@ -61,4 +61,27 @@ test('erro de início pega o trecho previsto mais próximo', () => {
 test('percentil', () => {
   assert.equal(percentil([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 90), 9);
   assert.equal(percentil([], 50), null);
+});
+
+test('trechos perdidos: só sequências de 3+ palavras removidas', () => {
+  const r = wer('a b c d e f g h', 'a b h');
+  assert.deepEqual(trechosPerdidos(r), ['c d e f g']);
+  assert.deepEqual(trechosPerdidos(wer('a b c d', 'a c d')), []); // 1 palavra só não é trecho
+});
+
+test('frases perdidas: frase com metade ou mais das palavras removidas', () => {
+  const frases = ['O carro saiu da pista.', 'A parte central da meditação é o yoga.', 'Fim da corrida.'];
+  const hip = 'o carro saiu da pista fim da corrida';
+  const perdidas = frasesPerdidas(frases, hip);
+  assert.equal(perdidas.length, 1);
+  assert.match(perdidas[0].frase, /meditação/);
+  // frase com erros de reconhecimento (trocas) não conta como perdida
+  assert.equal(frasesPerdidas(frases, 'o carro saiu da pista a arte central da medicação é o ioga fim da corrida').length, 0);
+});
+
+test('repetições: 4 palavras repetidas além do que a referência tem', () => {
+  const r = wer('os negros e brancos', 'os negros e os negros e os negros e brancos');
+  assert.ok(repeticoes(r).some((x) => x.texto === 'os negros e os'));
+  // repetição que existe na referência não conta
+  assert.deepEqual(repeticoes(wer('é campeão é campeão é campeão', 'é campeão é campeão é campeão')), []);
 });

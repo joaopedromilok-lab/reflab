@@ -15,6 +15,7 @@ const script = require('./script');
 const { assetPath } = require('./paths');
 const { jsonStore } = require('./store');
 const blocos = require('./blocos');
+const recuperacao = require('./recuperacao');
 
 const IS_WIN = process.platform === 'win32';
 
@@ -148,7 +149,8 @@ async function load(file, translated = false) {
 
 // Junta os tokens do whisper em palavras com tempo de início e fim.
 // offset: início do bloco no áudio original (s); limite: duração do bloco.
-function wordsFromTokens(tokens, offset = 0, limite = Infinity) {
+// comProb: guarda em "p" a confiança média dos tokens da palavra (só para a recuperação).
+function wordsFromTokens(tokens, offset = 0, limite = Infinity, comProb = false) {
   const words = [];
   for (const tk of tokens || []) {
     const text = tk.text || '';
@@ -158,14 +160,18 @@ function wordsFromTokens(tokens, offset = 0, limite = Infinity) {
     if (from === null) continue;
     if (!words.length || /^\s/.test(text)) {
       if (!text.trim()) continue;
-      words.push({ w: text.trim(), start: from, end: to });
+      words.push({ w: text.trim(), start: from, end: to, probs: [tk.p] });
     } else {
       const last = words[words.length - 1];
       last.w += text;
       last.end = Math.max(last.end, to);
+      last.probs.push(tk.p);
     }
   }
-  return words.filter((w) => w.w);
+  return words.filter((w) => w.w).map(({ probs, ...w }) => {
+    const ps = probs.filter((p) => typeof p === 'number');
+    return comProb && ps.length ? { ...w, p: ps.reduce((a, b) => a + b, 0) / ps.length } : w;
+  });
 }
 
 function cleanText(t) {
@@ -176,11 +182,11 @@ function isNoise(text) {
   return !text || /^[[(].*[\])]$/.test(text) || /^(♪|\*|\.)+$/.test(text);
 }
 
-function parseWhisper(raw, offset = 0, limite = Infinity) {
+function parseWhisper(raw, offset = 0, limite = Infinity, { comProb = false } = {}) {
   return (raw.transcription || [])
     .map((s) => {
       const text = cleanText(s.text);
-      const words = wordsFromTokens(s.tokens, offset, limite);
+      const words = wordsFromTokens(s.tokens, offset, limite, comProb);
       return {
         start: Math.min(s.offsets.from / 1000, limite) + offset,
         end: Math.min(s.offsets.to / 1000, limite) + offset,
@@ -284,12 +290,171 @@ async function rodarWhisperCli(cli, args, saida, { onProgress, onStart } = {}) {
   return JSON.parse(await fsp.readFile(`${saida}.json`, 'utf8'));
 }
 
+// Confere se toda a fala que o detector achou virou texto. Cada lacuna
+// suspeita é transcrita de novo sozinha (com margem) e o texto novo só entra
+// se passar nas verificações de recuperacao.js.
+// Se o whisper pular a fala de novo, tenta em pedaços menores e, nos pedaços
+// que ainda falharem, com margem curta (o pulo depende do recorte: o fim da
+// frase anterior na margem pode provocá-lo de novo; a borda da lacuna já fica
+// depois do fim de uma palavra reconhecida, então a margem curta não corta
+// palavras). Os pedaços são juntados e avaliados de uma vez contra a lacuna
+// inteira. O texto que passa nas verificações ainda é confirmado por uma
+// segunda leitura só do trecho dele (recorte justo): fala real se repete,
+// alucinação no ruído quase nunca. Todas as tentativas ficam registradas,
+// aceitas ou não, com o motivo.
+async function recuperarLacunas(wav, info, fala, segments, { cli, args, tmp, opcoes, onPhase, onStart, onLog }) {
+  const o = recuperacao.opcoes(opcoes);
+  if (!o.ativa) return { segments, diagnostico: { ativa: false, motivo: o.desligadaPorque || 'desligada' } };
+  const duracao = blocos.duracaoWav(info);
+  const lista = recuperacao.lacunas(fala, segments, o);
+  const tentativas = [];
+  let atual = segments;
+  let execucoes = 0;
+  const resumo = (c) => c.map((x) => ({ start: +x.start.toFixed(2), end: +x.end.toFixed(2), text: x.text }));
+
+  // Transcreve um trecho com margem. Devolve null se passou do limite de execuções.
+  // (a confirmação usa as mesmas execuções e o mesmo limite)
+  const transcrever = async (trecho, margem) => {
+    if (execucoes >= o.maxTentativas) return null;
+    execucoes++;
+    const j = recuperacao.janela(trecho, duracao, { ...o, margem });
+    const wavJ = path.join(tmp, `recuperar-${execucoes}.wav`);
+    blocos.recortarWav(wav, wavJ, j.start, j.end, info);
+    const raw = await rodarWhisperCli(cli, [...args, '-f', wavJ], path.join(tmp, `recuperar-${execucoes}`), { onStart });
+    await fsp.rm(wavJ, { force: true });
+    return { janela: j, candidato: parseWhisper(raw, j.start, j.end - j.start, { comProb: true }) };
+  };
+
+  // Segunda leitura das palavras novas: recortes justos em volta delas.
+  const confirmar = async (novas) => {
+    const grupos = [];
+    for (const w of novas) {
+      const g = grupos[grupos.length - 1];
+      if (g && w.start - g.end <= o.separarConfirmacao) { g.end = w.end; g.palavras.push(w); } else grupos.push({ start: w.start, end: w.end, palavras: [w] });
+    }
+    const lidas = [];
+    const janelas = [];
+    for (const g of grupos) {
+      const t = await transcrever(g, o.margemConfirmacao);
+      if (!t) return { concordancia: null, janelas, texto: '' }; // limite de execuções: não dá para confirmar
+      janelas.push(t.janela);
+      lidas.push(...t.candidato.flatMap((s) => s.words || []));
+    }
+    return {
+      concordancia: recuperacao.concordancia(novas.map((w) => w.w), lidas.map((w) => w.w)),
+      janelas,
+      texto: lidas.map((w) => w.w).join(' '),
+    };
+  };
+
+  const decidir = async (l, candidato, extra) => {
+    let r = recuperacao.incorporar(atual, l, candidato, o);
+    let confirmacao;
+    if (r.decisao === 'aceita' && o.confirmar) {
+      const c = await confirmar(r.palavrasNovas);
+      confirmacao = { ...c, concordancia: c.concordancia === null ? null : +c.concordancia.toFixed(2) };
+      if (c.concordancia === null || c.concordancia < o.concordanciaMinima) {
+        r = {
+          ...r,
+          decisao: 'rejeitada',
+          motivo: c.concordancia === null
+            ? `sem execuções para confirmar o texto novo (limite de ${o.maxTentativas})`
+            : `uma segunda leitura do trecho não confirmou o texto novo (${Math.round(c.concordancia * 100)}% das palavras; leu "${c.texto.slice(0, 80)}")`,
+          segments: atual,
+        };
+      }
+    }
+    if (r.decisao === 'aceita') atual = r.segments;
+    tentativas.push({
+      inicio: l.start,
+      fim: l.end,
+      motivo: l.motivo,
+      ...extra,
+      decisao: r.decisao,
+      motivoDecisao: r.motivo,
+      textoRecuperado: r.inserido || '',
+      confianca: typeof r.pMedia === 'number' ? +r.pMedia.toFixed(3) : null,
+      ...(confirmacao ? { confirmacao } : {}),
+      candidato: resumo(candidato),
+    });
+    // cada trecho recuperado guarda o número da tentativa (diagnóstico e testes)
+    if (r.decisao === 'aceita') for (const s of atual) if (s.recuperado && s.tentativa === undefined) s.tentativa = tentativas.length;
+    return r;
+  };
+
+  const registrar = () => {
+    const t = tentativas[tentativas.length - 1];
+    onLog(`recuperação ${t.inicio.toFixed(1)}-${t.fim.toFixed(1)} s (${t.motivo}${t.modo ? `, ${t.modo}` : ''}): ${t.decisao} - ${t.motivoDecisao}${t.textoRecuperado ? ` - "${t.textoRecuperado.slice(0, 120)}"` : ''}`);
+  };
+
+  for (let i = 0; i < lista.length; i++) {
+    const l = lista[i];
+    onPhase(`Conferindo trechos sem texto (${i + 1} de ${lista.length})...`);
+    try {
+      const t1 = await transcrever(l, o.margem);
+      if (!t1) {
+        tentativas.push({ inicio: l.start, fim: l.end, motivo: l.motivo, decisao: 'ignorada', motivoDecisao: `limite de ${o.maxTentativas} execuções` });
+        registrar();
+        continue;
+      }
+      const r = await decidir(l, t1.candidato, { modo: 'lacuna inteira', janela: t1.janela });
+      registrar();
+      const pulou = r.decisao === 'rejeitada' && (r.candidatoEsticado || /só repetiu|nada reconhecido/.test(r.motivo));
+      if (!pulou || l.end - l.start < 1.5 * o.passo) continue;
+
+      const pedacos = [];
+      for (const trecho of recuperacao.dividir(l, o)) {
+        let t = await transcrever(trecho, o.margem);
+        const info2 = { inicio: trecho.start, fim: trecho.end };
+        if (t && recuperacao.pulouTrecho(t.candidato, trecho, o) && o.margemCurta < o.margem) {
+          const curta = await transcrever(trecho, o.margemCurta);
+          info2.primeira = t ? { janela: t.janela, candidato: resumo(t.candidato) } : null;
+          if (curta) { t = curta; info2.margemCurta = true; }
+        }
+        if (!t) break; // limite de execuções
+        info2.janela = t.janela;
+        pedacos.push({ trecho, candidato: t.candidato, info: info2 });
+      }
+      if (!pedacos.length) continue;
+      await decidir(l, recuperacao.juntarPedacos(pedacos, l), {
+        modo: `em ${pedacos.length} pedaços`,
+        pedacos: pedacos.map((x) => ({ ...x.info, candidato: resumo(x.candidato) })),
+      });
+      registrar();
+    } catch (e) {
+      tentativas.push({ inicio: l.start, fim: l.end, motivo: l.motivo, decisao: 'erro', motivoDecisao: e.message });
+      registrar();
+    }
+  }
+  return {
+    segments: atual,
+    diagnostico: {
+      ativa: true,
+      opcoes: {
+        limiar: o.limiar, palavraMaxima: o.palavraMaxima, margem: o.margem, passo: o.passo, margemCurta: o.margemCurta,
+        coberturaMinima: o.coberturaMinima, confirmar: o.confirmar, concordanciaMinima: o.concordanciaMinima,
+      },
+      lacunas: lista.length,
+      execucoes,
+      aceitas: tentativas.filter((t) => t.decisao === 'aceita').length,
+      tentativas,
+    },
+  };
+}
+
+// Remove laços de repetição do whisper (só os "certos") e registra os casos.
+function limparRepeticoes(segments, onLog) {
+  const r = recuperacao.filtrarRepeticoes(segments);
+  for (const c of r.casos) onLog(`repetição em ${c.inicio.toFixed(1)} s: "${c.texto}" x${c.vezes} - ${c.decisao}`);
+  return r;
+}
+
 // Roda o whisper num arquivo de áudio ou vídeo e devolve os trechos.
 // Com "vad", a detecção de voz roda à parte e o áudio é transcrito em blocos
 // do arquivo original (tempos corretos). Sem o detector, usa o --vad interno.
 async function runWhisper(input, duration, {
-  language = 'pt', model = 'turbo', prompt = '', translate = false, vad = true, blocosOpcoes,
-  onPhase = () => {}, onProgress, onStart,
+  language = 'pt', model = 'turbo', prompt = '', translate = false, vad = true, blocosOpcoes, recuperacaoOpcoes,
+  onPhase = () => {}, onProgress, onStart, onLog = () => {},
 } = {}) {
   const cli = await ensureWhisper(onPhase, onProgress);
   const modelPath = await ensureModel(model, onPhase, onProgress);
@@ -331,9 +496,16 @@ async function runWhisper(input, duration, {
           feito += dur;
         }
         segments.sort((x, y) => x.start - y.start);
+        const rep = limparRepeticoes(segments, onLog);
+        const rec = await recuperarLacunas(wav, info, fala, rep.segments, {
+          cli, args, tmp, opcoes: recuperacao.opcoesDoModelo(model, recuperacaoOpcoes), onPhase, onStart, onLog,
+        });
         return {
-          segments,
-          segmentacao: { modo: 'blocos', blocos: plano.length, fala: +total.toFixed(1), plano },
+          segments: rec.segments,
+          segmentacao: {
+            modo: 'blocos', blocos: plano.length, fala: +total.toFixed(1), plano,
+            repeticoes: rep.casos, recuperacao: rec.diagnostico,
+          },
         };
       }
     }
@@ -345,16 +517,23 @@ async function runWhisper(input, duration, {
     const vadModel = assetPath('models', 'ggml-silero-v5.1.2.bin');
     if (vad && fs.existsSync(vadModel)) extra.push('--vad', '-vm', vadModel, '-vsd', '300', '-vp', '200');
     const raw = await rodarWhisperCli(cli, [...args, '-f', wav, ...extra], path.join(tmp, 'saida'), { onProgress, onStart });
-    return { segments: parseWhisper(raw), segmentacao: { modo: extra.length ? 'vad-interno' : 'sem-vad', blocos: 1 } };
+    const rep = limparRepeticoes(parseWhisper(raw), onLog);
+    return { segments: rep.segments, segmentacao: { modo: extra.length ? 'vad-interno' : 'sem-vad', blocos: 1, repeticoes: rep.casos } };
   } finally {
     await fsp.rm(tmp, { recursive: true, force: true });
   }
 }
 
+// Registro técnico (console do processo principal, não aparece na tela).
+// Os detalhes completos ficam no JSON da transcrição (segmentacao).
+function logTranscricao(msg) {
+  console.log(`[transcrição] ${msg}`);
+}
+
 async function transcribe(file, {
   language = 'pt', model = 'turbo', prompt = '', translate = false, vad = true,
-  url = null, useYoutubeSubs = false, ytdlpArgs = [], blocosOpcoes,
-  onPhase = () => {}, onProgress, onStart,
+  url = null, useYoutubeSubs = false, ytdlpArgs = [], blocosOpcoes, recuperacaoOpcoes,
+  onPhase = () => {}, onProgress, onStart, onLog = logTranscricao,
 } = {}) {
   const info = await media.probe(file);
   if (!info.hasAudio) throw new Error('O arquivo não tem áudio.');
@@ -379,7 +558,7 @@ async function transcribe(file, {
 
   if (!segments) {
     ({ segments, segmentacao } = await runWhisper(file, info.duration, {
-      language, model, prompt, translate, vad, blocosOpcoes, onPhase, onProgress, onStart,
+      language, model, prompt, translate, vad, blocosOpcoes, recuperacaoOpcoes, onPhase, onProgress, onStart, onLog,
     }));
   }
 
@@ -443,7 +622,9 @@ async function transcribeLink(url, linkInfo, {
       if (r.code !== 0 || !audio) {
         throw new Error(`Não foi possível baixar o áudio: ${r.stderr.trim().split(/\r?\n/).filter((l) => /ERROR/.test(l)).pop() || ''}`);
       }
-      ({ segments } = await runWhisper(path.join(tmp, audio), info.duration, { language, model, prompt, vad, onPhase, onProgress, onStart }));
+      ({ segments } = await runWhisper(path.join(tmp, audio), info.duration, {
+        language, model, prompt, vad, onPhase, onProgress, onStart, onLog: logTranscricao,
+      }));
     } finally {
       await fsp.rm(tmp, { recursive: true, force: true });
     }
