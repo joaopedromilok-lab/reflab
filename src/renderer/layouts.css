@@ -160,8 +160,8 @@ body:not(.compact) .tr-options > summary { display: none; }
 
 /* Contraste: botão principal mais escuro (texto branco ~4,6:1) e cinzas mais claros no tema escuro */
 :root:not([data-theme="light"]) body.compact { --muted: #a3a3ad; }
-body.compact .btn.primary { background: #d93a30; border-color: #d93a30; }
-body.compact .btn.primary:hover { background: #e4483e; border-color: #e4483e; }
+body.compact .btn.primary { background: var(--btn-primary-bg); border-color: var(--btn-primary-bg); }
+body.compact .btn.primary:hover { background: var(--btn-primary-hover); border-color: var(--btn-primary-hover); }
 body.compact .nav-group-label, body.compact .field > label, body.compact .label { color: var(--muted); }
 
 /* Alvos de clique maiores */

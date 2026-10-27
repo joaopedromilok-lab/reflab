@@ -66,6 +66,7 @@ function fmtSpeed(b) {
 let toastTimer;
 function toast(msg, isErr = false) {
   const t = $('#toast');
+  t.setAttribute('aria-live', isErr ? 'assertive' : 'polite'); // erro é anunciado na hora pelo leitor de tela
   t.textContent = msg;
   t.className = `toast${isErr ? ' err' : ''}`;
   clearTimeout(toastTimer);
@@ -656,9 +657,12 @@ function renderAnalysis(r) {
       const star = el('button', {
         class: `star${favs.has(sh.index) ? ' on' : ''}`,
         title: 'Favorito',
+        'aria-label': `Favoritar plano ${sh.index}`,
+        'aria-pressed': String(favs.has(sh.index)),
         onclick: () => {
           if (favs.has(sh.index)) favs.delete(sh.index); else favs.add(sh.index);
           star.classList.toggle('on', favs.has(sh.index));
+          star.setAttribute('aria-pressed', String(favs.has(sh.index)));
           saveFavs();
         },
       }, '★');
@@ -721,9 +725,25 @@ function renderTagFilter() {
     }, t)));
 }
 
+// Liga cada rótulo de campo (.field > label) ao seu controle, para o clique no
+// rótulo focar o campo e o leitor de tela anunciar o nome. Vale para os campos
+// do HTML e para os criados depois pelo app.
+let campos = 0;
+function ligarRotulos(raiz = document) {
+  for (const label of raiz.querySelectorAll('.field > label:not([for])')) {
+    if (label.querySelector('input, select, textarea')) continue; // o rótulo já envolve o campo
+    const campo = label.parentElement.querySelector('input, select, textarea');
+    if (!campo) continue;
+    if (!campo.id) campo.id = `campo-${++campos}`;
+    label.htmlFor = campo.id;
+  }
+}
+ligarRotulos();
+new MutationObserver(() => ligarRotulos()).observe(document.body, { childList: true, subtree: true });
+
 function historyEditor(h) {
-  const tags = el('input', { value: (h.tags || []).join(', '), placeholder: 'etiquetas separadas por vírgula (ex.: entrada da noiva, drone, gol)' });
-  const notes = el('textarea', { rows: '3', placeholder: 'anotações: o que chamou atenção nessa referência?' });
+  const tags = el('input', { value: (h.tags || []).join(', '), 'aria-label': 'Etiquetas', placeholder: 'etiquetas separadas por vírgula (ex.: entrada da noiva, drone, gol)' });
+  const notes = el('textarea', { rows: '3', 'aria-label': 'Anotações', placeholder: 'anotações: o que chamou atenção nessa referência?' });
   notes.value = h.notes || '';
   return el('div', { class: 'heditor' }, tags, notes,
     el('div', { class: 'row' },
