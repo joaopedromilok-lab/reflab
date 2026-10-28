@@ -2,8 +2,7 @@ name: Gerar app
 
 on:
   push:
-    # versao-layout-b: só gera os builds (Mac e Windows) para validar antes do merge; publicar continua só em tag
-    branches: [main, versao-layout-b]
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 

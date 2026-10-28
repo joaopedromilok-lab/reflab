@@ -6,6 +6,7 @@ Feito para uso pessoal e estudo.
 
 ## O que ele faz
 
+- **Tela centrada no vídeo:** o Início pergunta o que fazer (baixar, transcrever, estudar a edição, achar momentos) e cada vídeo tem uma página com abas (resumo, cortes, momentos, transcrição, ferramentas). Biblioteca em grade com o que já foi feito em cada vídeo. Cores com contraste legível nos temas claro e escuro.
 - **Download com presets para edição:** H.264 + AAC, HEVC + AAC (acelerado pelo chip do Mac), ProRes 422, original, WAV ou MP3.
 - **Baixar só um trecho** (ex.: de 1:20 a 1:45).
 - **Organização:** pasta de destino, subpastas por data, canal ou projeto, `.txt` com link e crédito, miniatura e legendas `.srt`.
@@ -22,7 +23,7 @@ Feito para uso pessoal e estudo.
 - **Momentos e clipes:** detecta os momentos mais intensos pelo áudio (torcida, narração, aplausos), exporta marcadores e recorta vários trechos de uma vez, inclusive na vertical 9:16.
 - **Transcrição e roteiro** (whisper.cpp, modelo large-v3-turbo por padrão e large-v3 para máxima qualidade, roda no próprio Mac):
   - transcrever direto de um link sem guardar o vídeo (usa a legenda do autor ou um áudio temporário que é apagado);
-  - ignora música e silêncio (detecção de voz), aceita nomes e palavras difíceis, tempo de cada palavra;
+  - ignora música e silêncio (detecção de voz) e transcreve em blocos guiados por ela, para não perder fala baixa nem trechos depois de pausas longas; aceita nomes e palavras difíceis, tempo de cada palavra;
   - player junto com o texto, correção do texto, busca com marcadores;
   - montagem pelo texto: escolher frases e gerar timeline XML ou vídeo;
   - legenda gravada estilo Reels: 5 estilos prontos, fonte, cores, tamanho, posição, palavras em destaque, logo/marca d'água, formatos 9:16, 4:5 e 1:1 e prévia antes de gerar;
